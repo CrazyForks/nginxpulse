@@ -11,6 +11,8 @@ export interface AppStatusResponse {
   log_parsing: boolean;
   log_parsing_progress?: number;
   demo_mode?: boolean;
+  version?: string;
+  git_commit?: string;
 }
 
 export interface TimeSeriesStats {

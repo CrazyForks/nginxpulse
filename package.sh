@@ -20,13 +20,15 @@ rm -f bin/nginxpulse
 # 获取版本信息
 BUILD_TIME=$(date "+%Y-%m-%d %H:%M:%S")
 GIT_COMMIT=$(git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+VERSION=${VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")}
 
 echo "版本信息:"
+echo " - 版本号: ${VERSION}"
 echo " - 构建时间: ${BUILD_TIME}"
 echo " - Git提交: ${GIT_COMMIT}"
 
 echo "编译主程序..."
-go build -ldflags="-s -w -X 'github.com/likaia/nginxpulse/internal/version.BuildTime=${BUILD_TIME}' -X 'github.com/likaia/nginxpulse/internal/version.GitCommit=${GIT_COMMIT}'" -o bin/nginxpulse ./cmd/nginxpulse/main.go
+go build -ldflags="-s -w -X 'github.com/likaia/nginxpulse/internal/version.Version=${VERSION}' -X 'github.com/likaia/nginxpulse/internal/version.BuildTime=${BUILD_TIME}' -X 'github.com/likaia/nginxpulse/internal/version.GitCommit=${GIT_COMMIT}'" -o bin/nginxpulse ./cmd/nginxpulse/main.go
 
 if [ $? -eq 0 ]; then
     echo "构建成功! 可执行文件: bin/nginxpulse"

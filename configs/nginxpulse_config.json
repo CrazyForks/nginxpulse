@@ -1,9 +1,9 @@
 {
   "websites": [
     {
-      "name": "神奇的程序员",
-      "logPath": "var/log/access.log",
-      "domains": ["www.kaisir.cn", "kaisir.cn"]
+      "name": "GZ Log Test",
+      "logPath": "var/log/gz-log-read-test/*.gz",
+      "domains": ["localhost"]
     }
   ],
   "system": {
@@ -24,9 +24,6 @@
       "favicon.ico$",
       "robots.txt$",
       "sitemap.xml$",
-      "\\.(?:js|css|jpg|jpeg|png|gif|svg|webp|woff|woff2|ttf|eot|ico)$",
-      "^/api/",
-      "^/ajax/",
       "^/health$",
       "^/_(?:nuxt|next)/",
       "rss.xml$",

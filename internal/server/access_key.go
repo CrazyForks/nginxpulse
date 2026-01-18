@@ -28,6 +28,10 @@ func accessKeyMiddleware() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Next()
+			return
+		}
 		if c.Request.Method == http.MethodOptions {
 			c.Next()
 			return

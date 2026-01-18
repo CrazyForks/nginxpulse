@@ -5,13 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/publish_docker.sh -r <repo> [-v <version>] [-p <platforms>] [--no-latest] [--no-push]
+Usage: scripts/publish_docker.sh -r <repo> [-v <version>] [-p <platforms>] [--no-push]
 
 Options:
   -r, --repo        Docker Hub repo, e.g. username/nginxpulse
   -v, --version     Version tag (defaults to git describe or timestamp)
   -p, --platforms   Build platforms (default: linux/amd64)
-  --no-latest       Do not tag/push :latest
   --no-push         Build only (no push)
 
 Environment:
@@ -40,10 +39,6 @@ while [[ $# -gt 0 ]]; do
     -p|--platforms)
       PLATFORMS="$2"
       shift 2
-      ;;
-    --no-latest)
-      TAG_LATEST=false
-      shift
       ;;
     --no-push)
       PUSH=false
@@ -77,10 +72,14 @@ fi
 BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")"
 
-TAGS=(-t "$REPO:$VERSION")
+TAG_LIST=("$REPO:$VERSION")
 if $TAG_LATEST; then
-  TAGS+=(-t "$REPO:latest")
+  TAG_LIST+=("$REPO:latest")
 fi
+TAGS=()
+for tag in "${TAG_LIST[@]}"; do
+  TAGS+=(-t "$tag")
+done
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker CLI not found." >&2
@@ -118,10 +117,9 @@ if $PUSH; then
       "${BUILD_ARGS[@]}" \
       -f "$ROOT_DIR/Dockerfile" \
       "$ROOT_DIR"
-    docker push "$REPO:$VERSION"
-    if $TAG_LATEST; then
-      docker push "$REPO:latest"
-    fi
+    for tag in "${TAG_LIST[@]}"; do
+      docker push "$tag"
+    done
   fi
 else
   docker build \

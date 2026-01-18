@@ -47,6 +47,7 @@ func buildRouter(statsFactory *analytics.StatsFactory, logParser *ingest.LogPars
 	router.Use(accessKeyMiddleware())
 
 	web.SetupRoutes(router, statsFactory, logParser)
+	attachWebUI(router)
 
 	return router
 }

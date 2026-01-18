@@ -38,6 +38,10 @@
           <div class="sidebar-label">{{ sidebarLabel }}</div>
           <div class="sidebar-hint">{{ sidebarHint }}</div>
         </template>
+        <div v-if="versionText" class="app-version">
+          <span class="app-version-dot" aria-hidden="true"></span>
+          <span>{{ versionText }}</span>
+        </div>
       </div>
     </aside>
 
@@ -94,6 +98,7 @@ const isDark = ref(localStorage.getItem('darkMode') === 'true');
 const parsingActive = ref(false);
 const liveVisitorCount = ref<number | null>(null);
 const demoMode = ref(false);
+const appVersion = ref('');
 const accessKeyRequired = ref(false);
 const accessKeySubmitting = ref(false);
 const accessKeyInput = ref(localStorage.getItem(ACCESS_KEY_STORAGE) || '');
@@ -148,6 +153,7 @@ async function refreshAppStatus() {
   try {
     const status = await fetchAppStatus();
     demoMode.value = Boolean(status.demo_mode);
+    appVersion.value = status.version ?? '';
     accessKeyRequired.value = false;
     accessKeyError.value = '';
   } catch (error) {
@@ -187,6 +193,8 @@ const liveVisitorText = computed(() =>
     ? (liveVisitorCount.value as number).toLocaleString('zh-CN')
     : '--'
 );
+
+const versionText = computed(() => appVersion.value || '');
 </script>
 
 <style lang="scss" scoped>
@@ -309,5 +317,23 @@ const liveVisitorText = computed(() =>
   margin-top: 12px;
   font-size: 12px;
   color: var(--error-color);
+}
+
+.app-version {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.app-version-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 </style>

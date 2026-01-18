@@ -182,6 +182,49 @@ go build -o bin/nginxpulse ./cmd/nginxpulse/main.go
 > 前端开发服务默认端口 8088，并会将 `/api` 代理到 `http://127.0.0.1:8089`。
 > 本地开发前请准备好日志文件，放在 `var/log/` 下（或确保 `configs/nginxpulse_config.json` 的 `logPath` 指向对应文件）。
 
+### 4) 单体部署（单进程）
+如果你希望只分发一个可执行文件（内置前端静态资源），可以使用：
+```bash
+./scripts/build_single.sh
+```
+执行后会生成 `bin/nginxpulse`，该二进制已内置前端静态资源，启动后即可同时提供前后端服务：
+- 前端：`http://localhost:8088`
+- 后端：`http://localhost:8088/api/...`
+
+#### 单体部署的配置方式
+单体运行时读取配置有两种方式（任选其一）：
+
+**方式 A：配置文件（默认）**
+1. 在运行目录创建 `configs/`
+2. 放入 `configs/nginxpulse_config.json`
+3. 启动：`./nginxpulse`
+
+**方式 B：环境变量注入（无需文件）**
+```bash
+CONFIG_JSON="$(cat /path/to/nginxpulse_config.json)" ./nginxpulse
+```
+
+注意事项：
+- 配置文件路径为相对路径 `./configs/nginxpulse_config.json`，请确保运行时工作目录正确。
+- 如果使用 systemd，请设置 `WorkingDirectory`，或改用 `CONFIG_JSON` 注入。
+- 数据目录 `./var/nginxpulse_data` 也是相对路径；找不到目录时请先确认当前进程的工作目录。
+
+### 5) Makefile 构建
+此项目也支持了通过Makefile来构建相关资源，命令如下：
+```bash
+make frontend   # 构建前端 webapp/dist
+make backend    # 构建后端 bin/nginxpulse（不内嵌前端）
+make single     # 构建单体包（内嵌前端 + 复制配置与gzip示例）
+make dev        # 启动本地开发（前端8088，后端8089）
+make clean      # 清理构建产物
+```
+
+指定版本号示例：
+```bash
+VERSION=v0.4.8 make single
+VERSION=v0.4.8 make backend
+```
+
 ## 多个日志文件如何挂载？
 WEBSITES 它的值是个数组，参数对象中传入网站名、网址、日志路径（这个路径为容器内访问的路径，可按照需求随意指定）。
 参考示例:
@@ -221,7 +264,7 @@ volumes:
 
 ### 配置与数据目录
 - 配置文件：`configs/nginxpulse_config.json`
-- 数据目录：`var/nginxpulse_data/`
+- 数据目录：`var/nginxpulse_data/`（相对当前工作目录）
   - `nginxpulse.db`：SQLite 数据库
   - `nginx_scan_state.json`：日志扫描游标
   - `ip2region.xdb`：IP 本地库

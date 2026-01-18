@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -18,7 +17,6 @@ import (
 // HandleAppConfig 处理应用程序配置初始化和命令行参数
 func ProcessCliCommands() bool {
 	// 命令行参数
-	genConfig := flag.Bool("gen-config", false, "生成配置文件并退出")
 	cleanApp := flag.Bool("clean", false, "清理nginxpulse服务、释放端口和删除数据")
 	showVer := flag.Bool("v", false, "显示版本信息")
 	flag.Parse()
@@ -35,8 +33,8 @@ func ProcessCliCommands() bool {
 		return true
 	}
 
-	// 生成配置文件
-	if exit := initConfig(*genConfig); exit {
+	// 检查配置文件
+	if exit := initConfig(); exit {
 		return true
 	}
 
@@ -60,36 +58,18 @@ func showVersion() {
 	fmt.Printf("Git 提交: %s\n", version.GitCommit)
 }
 
-func initConfig(genConfig bool) bool {
-	_, err := os.Stat(config.ConfigFile)
-	configExists := err == nil
-
-	if genConfig {
-		err := writeDefaultConfig()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "生成配置文件失败: %v\n", err)
-		} else {
-			fmt.Println("配置文件已生成: " + config.ConfigFile)
-			fmt.Println("请编辑配置文件后再启动服务")
-		}
-		return true
-	}
-
-	if !configExists && config.HasEnvConfigSource() {
+func initConfig() bool {
+	if _, err := os.Stat(config.ConfigFile); err == nil {
 		return false
 	}
 
-	if !configExists {
-		err := writeDefaultConfig()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "生成配置文件失败: %v\n", err)
-		} else {
-			fmt.Println("配置文件已生成: " + config.ConfigFile)
-			fmt.Println("请编辑配置文件后再启动服务")
-		}
-		return true
+	if config.HasEnvConfigSource() {
+		return false
 	}
-	return false
+
+	fmt.Fprintf(os.Stderr, "未找到配置文件: %s\n", config.ConfigFile)
+	fmt.Fprintln(os.Stderr, "请提供配置文件，或通过 CONFIG_JSON/WEBSITES 注入配置")
+	return true
 }
 
 // initDirs 初始化目录
@@ -106,33 +86,6 @@ func initDirs() bool {
 		}
 	}
 	return false
-}
-
-// writeDefaultConfig 写入默认配置
-func writeDefaultConfig() error {
-	cfg := config.DefaultConfig()
-	cfg.Websites = []config.WebsiteConfig{
-		{
-			Name:    "示例网站1",
-			LogPath: "./weblog_eg/blog.beyondxin.top.log",
-		},
-		{
-			Name:    "示例网站2",
-			LogPath: "./weblog_eg/YiHangPavilion.log",
-		},
-	}
-	cfg.PVFilter.ExcludeIPs = []string{"127.0.0.1", "::1"}
-
-	configJson, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	configJson = append(configJson, '\n')
-	configDir := filepath.Dir(config.ConfigFile)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(config.ConfigFile, configJson, 0644)
 }
 
 // validateConfig 验证配置文件是否完整有效

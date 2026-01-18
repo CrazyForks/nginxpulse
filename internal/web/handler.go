@@ -10,6 +10,7 @@ import (
 	"github.com/likaia/nginxpulse/internal/analytics"
 	"github.com/likaia/nginxpulse/internal/config"
 	"github.com/likaia/nginxpulse/internal/ingest"
+	"github.com/likaia/nginxpulse/internal/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,6 +48,15 @@ func SetupRoutes(
 			"log_parsing":          ingest.IsIPParsing(),
 			"log_parsing_progress": ingest.GetIPParsingProgress(),
 			"demo_mode":            cfg.System.DemoMode,
+			"version":              version.Version,
+			"git_commit":           version.GitCommit,
+		})
+	})
+
+	router.GET("/api/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"version":    version.Version,
+			"git_commit": version.GitCommit,
 		})
 	})
 

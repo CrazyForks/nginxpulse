@@ -1,0 +1,133 @@
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build frontend
+        run: |
+          cd webapp
+          npm install
+          npm run build
+
+      - name: Prepare embedded assets
+        run: |
+          rm -rf internal/webui/dist
+          mkdir -p internal/webui/dist
+          cp -R webapp/dist/. internal/webui/dist/
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          bin_name="nginxpulse-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            bin_name="${bin_name}.exe"
+          fi
+          BUILD_TIME="$(date -u "+%Y-%m-%d %H:%M:%S")"
+          GIT_COMMIT="$(git rev-parse --short=7 HEAD)"
+          LDFLAGS="-s -w -X 'github.com/likaia/nginxpulse/internal/version.Version=${VERSION}' -X 'github.com/likaia/nginxpulse/internal/version.BuildTime=${BUILD_TIME}' -X 'github.com/likaia/nginxpulse/internal/version.GitCommit=${GIT_COMMIT}'"
+          go build -tags embed -ldflags="${LDFLAGS}" -o "dist/${bin_name}" ./cmd/nginxpulse/main.go
+
+      - name: Copy config and gz samples
+        run: |
+          mkdir -p dist/configs
+          cp configs/nginxpulse_config.json dist/configs/nginxpulse_config.json
+          if [ ! -d "var/log/gz-log-read-test" ]; then
+            echo "Missing gzip sample folder: var/log/gz-log-read-test" >&2
+            exit 1
+          fi
+          mkdir -p dist/var/log
+          cp -R var/log/gz-log-read-test dist/var/log/
+
+      - name: Package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          bin_name="nginxpulse-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            bin_name="${bin_name}.exe"
+          fi
+          if [ "${GOOS}" = "windows" ]; then
+            archive="nginxpulse-${TAG_NAME}-${GOOS}-${GOARCH}.zip"
+            (cd dist && zip -q -r "${archive}" "${bin_name}" configs var)
+          else
+            archive="nginxpulse-${TAG_NAME}-${GOOS}-${GOARCH}.tar.gz"
+            tar -czf "dist/${archive}" -C dist "${bin_name}" configs var
+          fi
+
+      - name: Generate checksums
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          cd dist
+          checksum_file="checksums-${TAG_NAME}-${GOOS}-${GOARCH}.txt"
+          files=()
+          for f in *.tar.gz *.zip; do
+            if [ -f "$f" ]; then
+              files+=("$f")
+            fi
+          done
+          if [ "${GOOS}" = "linux" ] && [ "${GOARCH}" = "amd64" ]; then
+            if [ -f "configs/nginxpulse_config.json" ]; then
+              files+=("configs/nginxpulse_config.json")
+            fi
+          fi
+          sha256sum "${files[@]}" > "${checksum_file}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums-*.txt
+
+      - name: Upload default config
+        if: ${{ matrix.goos == 'linux' && matrix.goarch == 'amd64' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/configs/nginxpulse_config.json
