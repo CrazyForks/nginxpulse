@@ -440,6 +440,11 @@ Disable:
   - `LOG_DEST` / `TASK_INTERVAL` / `SERVER_PORT`
   - `PV_STATUS_CODES` / `PV_EXCLUDE_PATTERNS` / `PV_EXCLUDE_IPS`
 
+### Large Log Parsing Strategy
+- Parse the most recent 7 days first so the UI becomes usable quickly.
+- Older data is backfilled in the background with time/byte budgets to avoid blocking scans.
+- If a queried time range is still being backfilled, the UI warns that data may be incomplete.
+
 ### Nginx Log Format
 Default parser assumes:
 ```

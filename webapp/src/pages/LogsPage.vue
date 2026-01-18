@@ -80,6 +80,9 @@
     <div v-if="ipParsing" class="logs-ip-notice">
       {{ t('logs.ipParsing', { progress: ipParsingProgressLabel }) }}
     </div>
+    <div v-if="parsingPending" class="logs-ip-notice">
+      {{ t('logs.parsingPending') }}
+    </div>
 
     <div class="card logs-table-box">
       <div class="logs-table-wrapper">
@@ -252,6 +255,7 @@ const rawLogs = ref<Array<Record<string, any>>>([]);
 const loading = ref(false);
 const ipParsing = ref(false);
 const ipParsingProgress = ref<number | null>(null);
+const parsingPending = ref(false);
 
 const ipParsingProgressText = computed(() => {
   if (ipParsingProgress.value === null) {
@@ -409,12 +413,14 @@ async function loadLogs() {
     totalPages.value = result.pagination?.pages || 0;
     ipParsing.value = Boolean(result.ip_parsing);
     ipParsingProgress.value = ipParsing.value ? normalizeProgress(result.ip_parsing_progress) : null;
+    parsingPending.value = Boolean(result.parsing_pending);
   } catch (error) {
     console.error('加载日志失败:', error);
     rawLogs.value = [];
     totalPages.value = 0;
     ipParsing.value = false;
     ipParsingProgress.value = null;
+    parsingPending.value = false;
   } finally {
     loading.value = false;
   }

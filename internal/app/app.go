@@ -55,7 +55,8 @@ func Run() error {
 	serverHandle := server.StartHTTPServer(statsFactory, logParser, cfg.Server.Port)
 	printStartupNotice(cfg)
 
-	go worker.InitialScan(logParser)
+	interval := config.ParseInterval(cfg.System.TaskInterval, 5*time.Minute)
+	go worker.InitialScan(logParser, interval)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -64,7 +65,6 @@ func Run() error {
 		go worker.RunDemoGenerator(ctx, repository, time.Minute)
 	}
 
-	interval := config.ParseInterval(cfg.System.TaskInterval, 5*time.Minute)
 	go worker.RunScheduler(ctx, logParser, interval)
 
 	return waitForShutdown(cancel, serverHandle)

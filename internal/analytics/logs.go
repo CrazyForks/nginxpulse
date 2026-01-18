@@ -33,15 +33,22 @@ type LogEntry struct {
 
 // LogsStats 日志查询结果
 type LogsStats struct {
-	Logs              []LogEntry `json:"logs"`
-	IPParsing         bool       `json:"ip_parsing"`
-	IPParsingProgress int        `json:"ip_parsing_progress"`
-	Pagination        struct {
+	Logs                []LogEntry `json:"logs"`
+	IPParsing           bool       `json:"ip_parsing"`
+	IPParsingProgress   int        `json:"ip_parsing_progress"`
+	ParsingPending      bool       `json:"parsing_pending"`
+	ParsingPendingRange *TimeRange `json:"parsing_pending_range,omitempty"`
+	Pagination          struct {
 		Total    int `json:"total"`
 		Page     int `json:"page"`
 		PageSize int `json:"pageSize"`
 		Pages    int `json:"pages"`
 	} `json:"pagination"`
+}
+
+type TimeRange struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
 }
 
 // GetType 实现 StatsResult 接口
@@ -171,6 +178,16 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		if err != nil {
 			return result, err
 		}
+	}
+
+	rangeStart, rangeEnd, err := resolveQueryRange(timeRange, timeStart, timeEnd)
+	if err != nil {
+		return result, err
+	}
+	if status, ok := ingest.GetWebsiteParseStatus(query.WebsiteID); ok {
+		pending, pendingRange := computeParsingPending(status, rangeStart, rangeEnd)
+		result.ParsingPending = pending
+		result.ParsingPendingRange = pendingRange
 	}
 
 	// 计算分页
@@ -582,6 +599,105 @@ func resolveNewVisitorRange(timeRange string, timeStart, timeEnd int64) (int64, 
 		return 0, timeEnd, nil
 	}
 	return 0, 0, nil
+}
+
+func resolveQueryRange(timeRange string, timeStart, timeEnd int64) (int64, int64, error) {
+	var rangeStart int64
+	var rangeEnd int64
+	if timeRange != "" {
+		startTime, endTime, err := timeutil.TimePeriod(timeRange)
+		if err != nil {
+			return 0, 0, fmt.Errorf("解析时间范围失败: %v", err)
+		}
+		rangeStart = startTime.Unix()
+		rangeEnd = endTime.Unix()
+	}
+	if timeStart > 0 {
+		if rangeStart == 0 || timeStart > rangeStart {
+			rangeStart = timeStart
+		}
+	}
+	if timeEnd > 0 {
+		if rangeEnd == 0 || timeEnd < rangeEnd {
+			rangeEnd = timeEnd
+		}
+	}
+	return rangeStart, rangeEnd, nil
+}
+
+func computeParsingPending(
+	status ingest.WebsiteParseStatus,
+	rangeStart, rangeEnd int64,
+) (bool, *TimeRange) {
+	logMin := status.LogMinTs
+	logMax := status.LogMaxTs
+	if logMin <= 0 || logMax <= 0 || logMax < logMin {
+		return false, nil
+	}
+
+	if rangeStart <= 0 {
+		rangeStart = logMin
+	}
+	if rangeEnd <= 0 {
+		rangeEnd = logMax
+	}
+
+	if rangeEnd < logMin || rangeStart > logMax {
+		return false, nil
+	}
+
+	parsedMin := status.ParsedMinTs
+	parsedMax := status.ParsedMaxTs
+	if parsedMin == 0 && status.RecentCutoffTs > 0 {
+		parsedMin = status.RecentCutoffTs
+	}
+
+	if parsedMin == 0 && parsedMax == 0 {
+		return true, &TimeRange{Start: rangeStart, End: rangeEnd}
+	}
+
+	pending := false
+	pendingStart := int64(0)
+	pendingEnd := int64(0)
+
+	if parsedMin > 0 && rangeStart < parsedMin {
+		pending = true
+		pendingStart = maxInt64(rangeStart, logMin)
+		pendingEnd = minInt64(rangeEnd, parsedMin-1)
+	}
+	if parsedMax > 0 && rangeEnd > parsedMax {
+		pending = true
+		pendingStart = maxInt64(pendingStart, maxInt64(parsedMax+1, rangeStart))
+		pendingEnd = maxInt64(pendingEnd, minInt64(rangeEnd, logMax))
+	}
+
+	if !pending {
+		return false, nil
+	}
+	if pendingStart == 0 {
+		pendingStart = rangeStart
+	}
+	if pendingEnd == 0 {
+		pendingEnd = rangeEnd
+	}
+	if pendingEnd < pendingStart {
+		return true, nil
+	}
+	return true, &TimeRange{Start: pendingStart, End: pendingEnd}
+}
+
+func minInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func buildInternalIPCondition(column string) (string, []interface{}) {

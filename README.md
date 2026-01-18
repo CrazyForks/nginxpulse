@@ -430,6 +430,11 @@ services:
   - `CONFIG_JSON` / `WEBSITES`
   - `LOG_DEST` / `TASK_INTERVAL` / `SERVER_PORT`
   - `PV_STATUS_CODES` / `PV_EXCLUDE_PATTERNS` / `PV_EXCLUDE_IPS`
+
+### 大日志解析策略
+- 默认先解析最近 7 天的数据，保证前台查询能尽快返回。
+- 历史数据通过后台分批回填（按时间/字节预算），避免阻塞周期性扫描。
+- 当前台查询的时间范围仍在回填中时，会提示“所选范围仍在解析中，数据可能不完整”。
   
 ### Nginx 日志格式
 默认解析模式基于典型的 access log 格式：

@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -24,9 +25,9 @@ import (
 
 var (
 	defaultNginxLogRegex = `^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<url>[^"]+) HTTP/\d\.\d" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"`
-	lastCleanupDate = ""
-	ipParsingMu     sync.RWMutex
-	ipParsing       bool
+	lastCleanupDate      = ""
+	parsingMu            sync.RWMutex
+	parsingMode          parseMode
 )
 
 const defaultNginxTimeLayout = "02/Jan/2006:15:04:05 -0700"
@@ -34,6 +35,12 @@ const defaultNginxTimeLayout = "02/Jan/2006:15:04:05 -0700"
 const (
 	parseTypeRegex     = "regex"
 	parseTypeCaddyJSON = "caddy_json"
+)
+
+const (
+	recentLogWindowDays = 7
+	recentScanChunkSize = 256 * 1024
+	backfillBatchSize   = 100
 )
 
 var (
@@ -61,12 +68,50 @@ type ParserResult struct {
 }
 
 type LogScanState struct {
-	Files map[string]FileState `json:"files"` // 每个文件的状态
+	Files           map[string]FileState `json:"files"` // 每个文件的状态
+	ParsedMinTs     int64                `json:"parsed_min_ts,omitempty"`
+	ParsedMaxTs     int64                `json:"parsed_max_ts,omitempty"`
+	LogMinTs        int64                `json:"log_min_ts,omitempty"`
+	LogMaxTs        int64                `json:"log_max_ts,omitempty"`
+	RecentCutoffTs  int64                `json:"recent_cutoff_ts,omitempty"`
+	BackfillPending bool                 `json:"backfill_pending,omitempty"`
 }
 
 type FileState struct {
-	LastOffset int64 `json:"last_offset"`
-	LastSize   int64 `json:"last_size"`
+	LastOffset     int64 `json:"last_offset"`
+	LastSize       int64 `json:"last_size"`
+	RecentOffset   int64 `json:"recent_offset,omitempty"`
+	BackfillOffset int64 `json:"backfill_offset,omitempty"`
+	BackfillEnd    int64 `json:"backfill_end,omitempty"`
+	BackfillDone   bool  `json:"backfill_done,omitempty"`
+	FirstTimestamp int64 `json:"first_ts,omitempty"`
+	LastTimestamp  int64 `json:"last_ts,omitempty"`
+	ParsedMinTs    int64 `json:"parsed_min_ts,omitempty"`
+	ParsedMaxTs    int64 `json:"parsed_max_ts,omitempty"`
+	RecentCutoffTs int64 `json:"recent_cutoff_ts,omitempty"`
+}
+
+type parseMode int
+
+const (
+	parseModeNone parseMode = iota
+	parseModeForeground
+	parseModeBackfill
+)
+
+type parseWindow struct {
+	minTs int64
+	maxTs int64
+}
+
+func (w parseWindow) allows(ts int64) bool {
+	if w.minTs > 0 && ts < w.minTs {
+		return false
+	}
+	if w.maxTs > 0 && ts >= w.maxTs {
+		return false
+	}
+	return true
 }
 
 type logLineParser struct {
@@ -126,6 +171,10 @@ func (p *LogParser) loadState() {
 		logrus.Errorf("解析扫描状态失败: %v", err)
 		p.states = make(map[string]LogScanState)
 	}
+
+	for websiteID := range p.states {
+		p.refreshWebsiteRanges(websiteID)
+	}
 }
 
 // updateState 更新并保存状态
@@ -139,6 +188,115 @@ func (p *LogParser) updateState() {
 	if err := os.WriteFile(p.statePath, data, 0644); err != nil {
 		logrus.Errorf("保存扫描状态失败: %v", err)
 	}
+}
+
+func (p *LogParser) ensureWebsiteState(websiteID string) LogScanState {
+	state, ok := p.states[websiteID]
+	if !ok {
+		state = LogScanState{
+			Files: make(map[string]FileState),
+		}
+	}
+	if state.Files == nil {
+		state.Files = make(map[string]FileState)
+	}
+	return state
+}
+
+func (p *LogParser) getFileState(websiteID, filePath string) (FileState, bool) {
+	state, ok := p.states[websiteID]
+	if !ok || state.Files == nil {
+		return FileState{}, false
+	}
+	fileState, ok := state.Files[filePath]
+	return fileState, ok
+}
+
+func (p *LogParser) setFileState(websiteID, filePath string, fileState FileState) {
+	state := p.ensureWebsiteState(websiteID)
+	state.Files[filePath] = fileState
+	p.states[websiteID] = state
+}
+
+func (p *LogParser) deleteFileState(websiteID, filePath string) {
+	state, ok := p.states[websiteID]
+	if !ok || state.Files == nil {
+		return
+	}
+	delete(state.Files, filePath)
+	p.states[websiteID] = state
+}
+
+func (p *LogParser) refreshWebsiteRanges(websiteID string) {
+	state, ok := p.states[websiteID]
+	if !ok || state.Files == nil {
+		return
+	}
+
+	var logMin, logMax int64
+	var parsedMin, parsedMax int64
+	var recentCutoff int64
+	backfillPending := false
+
+	for _, fileState := range state.Files {
+		if fileState.FirstTimestamp > 0 {
+			if logMin == 0 || fileState.FirstTimestamp < logMin {
+				logMin = fileState.FirstTimestamp
+			}
+		}
+		if fileState.LastTimestamp > 0 {
+			if logMax == 0 || fileState.LastTimestamp > logMax {
+				logMax = fileState.LastTimestamp
+			}
+		}
+		if fileState.ParsedMinTs > 0 {
+			if parsedMin == 0 || fileState.ParsedMinTs < parsedMin {
+				parsedMin = fileState.ParsedMinTs
+			}
+		}
+		if fileState.ParsedMaxTs > 0 {
+			if parsedMax == 0 || fileState.ParsedMaxTs > parsedMax {
+				parsedMax = fileState.ParsedMaxTs
+			}
+		}
+		if fileState.RecentCutoffTs > 0 {
+			if recentCutoff == 0 || fileState.RecentCutoffTs < recentCutoff {
+				recentCutoff = fileState.RecentCutoffTs
+			}
+		}
+		if !fileState.BackfillDone {
+			if fileState.BackfillEnd > fileState.BackfillOffset || fileState.BackfillEnd == 0 {
+				backfillPending = true
+			}
+		}
+	}
+
+	if logMin == 0 && parsedMin > 0 {
+		logMin = parsedMin
+	}
+	if logMax == 0 && parsedMax > 0 {
+		logMax = parsedMax
+	}
+	if parsedMin == 0 && recentCutoff > 0 {
+		parsedMin = recentCutoff
+	}
+
+	state.LogMinTs = logMin
+	state.LogMaxTs = logMax
+	state.ParsedMinTs = parsedMin
+	state.ParsedMaxTs = parsedMax
+	state.RecentCutoffTs = recentCutoff
+	state.BackfillPending = backfillPending
+	p.states[websiteID] = state
+
+	UpdateWebsiteParseStatus(websiteID, WebsiteParseStatus{
+		LogMinTs:        logMin,
+		LogMaxTs:        logMax,
+		ParsedMinTs:     parsedMin,
+		ParsedMaxTs:     parsedMax,
+		RecentCutoffTs:  recentCutoff,
+		BackfillPending: backfillPending,
+	})
 }
 
 // CleanOldLogs 清理保留天数之前的日志数据
@@ -193,8 +351,10 @@ func (p *LogParser) ScanNginxLogsForWebsite(websiteID string) []ParserResult {
 func (p *LogParser) ResetScanState(websiteID string) {
 	if websiteID == "" {
 		p.states = make(map[string]LogScanState)
+		ResetWebsiteParseStatus("")
 	} else {
 		delete(p.states, websiteID)
+		ResetWebsiteParseStatus(websiteID)
 	}
 	p.updateState()
 }
@@ -283,6 +443,7 @@ func (p *LogParser) scanNginxLogsInternal(websiteIDs []string) []ParserResult {
 			p.scanSingleFile(id, logPath, &parserResult)
 		}
 
+		p.refreshWebsiteRanges(id)
 		parserResult.Duration = time.Since(startTime)
 		parserResults[i] = parserResult
 	}
@@ -341,33 +502,58 @@ func (p *LogParser) scanableBytes(websiteID, logPath string) int64 {
 }
 
 func startIPParsing() bool {
-	ipParsingMu.Lock()
-	defer ipParsingMu.Unlock()
-	if ipParsing {
+	parsingMu.Lock()
+	defer parsingMu.Unlock()
+	if parsingMode != parseModeNone {
 		return false
 	}
-	ipParsing = true
+	parsingMode = parseModeForeground
 	resetParsingProgress()
 	return true
 }
 
 func finishIPParsing() {
-	ipParsingMu.Lock()
-	ipParsing = false
-	ipParsingMu.Unlock()
+	parsingMu.Lock()
+	if parsingMode == parseModeForeground {
+		parsingMode = parseModeNone
+	}
+	parsingMu.Unlock()
 	finalizeParsingProgress()
 }
 
 func IsIPParsing() bool {
-	ipParsingMu.RLock()
-	defer ipParsingMu.RUnlock()
-	return ipParsing
+	parsingMu.RLock()
+	defer parsingMu.RUnlock()
+	return parsingMode == parseModeForeground
+}
+
+func startBackfillParsing() bool {
+	parsingMu.Lock()
+	defer parsingMu.Unlock()
+	if parsingMode != parseModeNone {
+		return false
+	}
+	parsingMode = parseModeBackfill
+	return true
+}
+
+func finishBackfillParsing() {
+	parsingMu.Lock()
+	if parsingMode == parseModeBackfill {
+		parsingMode = parseModeNone
+	}
+	parsingMu.Unlock()
+}
+
+func IsBackfillParsing() bool {
+	parsingMu.RLock()
+	defer parsingMu.RUnlock()
+	return parsingMode == parseModeBackfill
 }
 
 // scanSingleFile 扫描单个日志文件
 func (p *LogParser) scanSingleFile(
 	websiteID string, logPath string, parserResult *ParserResult) {
-	// 打开文件
 	file, err := os.Open(logPath)
 	if err != nil {
 		logrus.Errorf("无法打开日志文件 %s: %v", logPath, err)
@@ -375,22 +561,113 @@ func (p *LogParser) scanSingleFile(
 	}
 	defer file.Close()
 
-	// 获取文件信息
 	fileInfo, err := file.Stat()
 	if err != nil {
 		logrus.Errorf("无法获取文件信息 %s: %v", logPath, err)
 		return
 	}
 
-	// 确定扫描起始位置
 	currentSize := fileInfo.Size()
-	startOffset := p.determineStartOffset(websiteID, logPath, currentSize)
 	isGzip := isGzipFile(logPath)
 
-	if startOffset < 0 {
+	parser, err := p.getLineParser(websiteID)
+	if err != nil {
+		parserResult.Success = false
+		parserResult.Error = err
 		return
 	}
 
+	fileState, ok := p.getFileState(websiteID, logPath)
+	if ok && currentSize < fileState.LastSize {
+		logrus.Infof("检测到网站 %s 的日志文件 %s 已被轮转，从头开始扫描", websiteID, logPath)
+		ok = false
+		p.deleteFileState(websiteID, logPath)
+	}
+
+	if !ok {
+		fileState = FileState{}
+		cutoff := time.Now().AddDate(0, 0, -recentLogWindowDays)
+		cutoffTs := cutoff.Unix()
+		fileState.RecentCutoffTs = cutoffTs
+
+		p.initFileRange(file, parser, fileInfo, isGzip, &fileState)
+
+		if isGzip {
+			if fileInfo.ModTime().After(cutoff) || fileInfo.ModTime().Equal(cutoff) {
+				if _, err := file.Seek(0, 0); err == nil {
+					if gzReader, err := gzip.NewReader(file); err == nil {
+						entriesCount, _, minTs, maxTs := p.parseLogLines(
+							gzReader, websiteID, parserResult, parseWindow{minTs: cutoffTs},
+						)
+						gzReader.Close()
+						p.updateParsedRange(&fileState, minTs, maxTs)
+						if maxTs > fileState.LastTimestamp {
+							fileState.LastTimestamp = maxTs
+						}
+						if entriesCount > 0 {
+							logrus.Infof("网站 %s 的 gzip 日志文件 %s 扫描完成，解析了 %d 条记录",
+								websiteID, logPath, entriesCount)
+						}
+					} else {
+						logrus.Errorf("无法解析 gzip 日志文件 %s: %v", logPath, err)
+					}
+				} else {
+					logrus.Errorf("无法重置 gzip 文件 %s: %v", logPath, err)
+				}
+			}
+
+			fileState.LastSize = currentSize
+			fileState.LastOffset = 0
+			fileState.BackfillOffset = 0
+			fileState.BackfillEnd = 0
+			fileState.BackfillDone = fileState.FirstTimestamp > 0 && fileState.FirstTimestamp >= cutoffTs
+			p.setFileState(websiteID, logPath, fileState)
+			return
+		}
+
+		recentOffset, lastTs, err := p.findRecentOffset(file, parser, cutoff)
+		backfillEnd := recentOffset
+		if err != nil {
+			logrus.Warnf("计算日志文件 %s 最近窗口失败: %v", logPath, err)
+			backfillEnd = currentSize
+			recentOffset = 0
+		}
+		if lastTs > 0 {
+			fileState.LastTimestamp = lastTs
+		}
+		fileState.RecentOffset = recentOffset
+		fileState.BackfillOffset = 0
+		fileState.BackfillEnd = backfillEnd
+		fileState.BackfillDone = err == nil && recentOffset == 0
+		fileState.LastOffset = currentSize
+		fileState.LastSize = currentSize
+
+		if recentOffset < currentSize {
+			if _, err := file.Seek(recentOffset, 0); err != nil {
+				logrus.Errorf("无法设置文件读取位置 %s: %v", logPath, err)
+			} else {
+				entriesCount, _, minTs, maxTs := p.parseLogLines(
+					file, websiteID, parserResult, parseWindow{minTs: cutoffTs},
+				)
+				p.updateParsedRange(&fileState, minTs, maxTs)
+				if maxTs > fileState.LastTimestamp {
+					fileState.LastTimestamp = maxTs
+				}
+				if entriesCount > 0 {
+					logrus.Infof("网站 %s 的日志文件 %s 扫描完成，解析了 %d 条记录",
+						websiteID, logPath, entriesCount)
+				}
+			}
+		}
+
+		p.setFileState(websiteID, logPath, fileState)
+		return
+	}
+
+	startOffset := p.determineStartOffset(websiteID, logPath, currentSize)
+	if startOffset < 0 {
+		return
+	}
 	if !isGzip && currentSize <= startOffset {
 		return
 	}
@@ -428,55 +705,35 @@ func (p *LogParser) scanSingleFile(
 		reader = gzReader
 		closer = gzReader
 	} else {
-		// 设置读取位置
-		_, err = file.Seek(startOffset, 0)
-		if err != nil {
+		if _, err = file.Seek(startOffset, 0); err != nil {
 			logrus.Errorf("无法设置文件读取位置 %s: %v", logPath, err)
 			return
 		}
 		reader = file
 	}
 
-	// 读取并解析日志
-	entriesCount, bytesRead := p.parseLogLines(reader, websiteID, parserResult)
+	entriesCount, bytesRead, minTs, maxTs := p.parseLogLines(reader, websiteID, parserResult, parseWindow{})
 	if closer != nil {
 		closer.Close()
 	}
 
-	// 更新文件状态
 	if isGzip {
-		p.updateFileState(websiteID, logPath, currentSize, startOffset+bytesRead)
+		fileState.LastOffset = startOffset + bytesRead
 	} else {
-		p.updateFileState(websiteID, logPath, currentSize, currentSize)
+		fileState.LastOffset = currentSize
 	}
+	fileState.LastSize = currentSize
+	p.updateParsedRange(&fileState, minTs, maxTs)
+	if maxTs > fileState.LastTimestamp {
+		fileState.LastTimestamp = maxTs
+	}
+
+	p.setFileState(websiteID, logPath, fileState)
 
 	if entriesCount > 0 {
 		logrus.Infof("网站 %s 的日志文件 %s 扫描完成，解析了 %d 条记录",
 			websiteID, logPath, entriesCount)
 	}
-}
-
-// updateFileState 更新文件状态
-func (p *LogParser) updateFileState(
-	websiteID string, filePath string, currentSize, lastOffset int64) {
-	state, ok := p.states[websiteID]
-	if !ok {
-		state = LogScanState{
-			Files: make(map[string]FileState),
-		}
-	}
-
-	if state.Files == nil {
-		state.Files = make(map[string]FileState)
-	}
-
-	fileState := FileState{
-		LastOffset: lastOffset,
-		LastSize:   currentSize,
-	}
-
-	state.Files[filePath] = fileState
-	p.states[websiteID] = state
 }
 
 // determineStartOffset 确定扫描起始位置
@@ -518,15 +775,178 @@ func (p *LogParser) determineStartOffset(
 	return fileState.LastOffset
 }
 
+func (p *LogParser) initFileRange(
+	file *os.File,
+	parser *logLineParser,
+	info os.FileInfo,
+	isGzip bool,
+	state *FileState,
+) {
+	if state.FirstTimestamp == 0 {
+		if firstTs, err := p.readFirstTimestamp(file, parser, isGzip); err == nil {
+			state.FirstTimestamp = firstTs
+		}
+	}
+	if state.LastTimestamp == 0 {
+		state.LastTimestamp = info.ModTime().Unix()
+	}
+}
+
+func (p *LogParser) updateParsedRange(state *FileState, minTs, maxTs int64) {
+	if minTs > 0 && (state.ParsedMinTs == 0 || minTs < state.ParsedMinTs) {
+		state.ParsedMinTs = minTs
+	}
+	if maxTs > 0 && maxTs > state.ParsedMaxTs {
+		state.ParsedMaxTs = maxTs
+	}
+	if state.FirstTimestamp == 0 || (minTs > 0 && minTs < state.FirstTimestamp) {
+		state.FirstTimestamp = minTs
+	}
+	if maxTs > 0 && maxTs > state.LastTimestamp {
+		state.LastTimestamp = maxTs
+	}
+}
+
+func (p *LogParser) readFirstTimestamp(
+	file *os.File,
+	parser *logLineParser,
+	isGzip bool,
+) (int64, error) {
+	if _, err := file.Seek(0, 0); err != nil {
+		return 0, err
+	}
+
+	var reader io.Reader = file
+	var closer io.Closer
+	if isGzip {
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			return 0, err
+		}
+		reader = gzReader
+		closer = gzReader
+	}
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		ts, err := p.parseLogTimestamp(parser, line)
+		if err == nil {
+			if closer != nil {
+				closer.Close()
+			}
+			return ts.Unix(), nil
+		}
+	}
+
+	if closer != nil {
+		closer.Close()
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	return 0, errors.New("未找到有效的日志时间")
+}
+
+func (p *LogParser) findRecentOffset(
+	file *os.File,
+	parser *logLineParser,
+	cutoff time.Time,
+) (int64, int64, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return 0, 0, err
+	}
+	size := info.Size()
+	if size == 0 {
+		return 0, 0, nil
+	}
+
+	var (
+		offset  = size
+		carry   []byte
+		lastTs  int64
+		started bool
+	)
+
+	for offset > 0 {
+		readSize := int64(recentScanChunkSize)
+		if offset < readSize {
+			readSize = offset
+		}
+		offset -= readSize
+
+		buf := make([]byte, readSize)
+		if _, err := file.ReadAt(buf, offset); err != nil && err != io.EOF {
+			return 0, lastTs, err
+		}
+
+		data := append(buf, carry...)
+		start := 0
+		if offset > 0 {
+			if idx := bytes.IndexByte(data, '\n'); idx >= 0 {
+				carry = append([]byte{}, data[:idx]...)
+				start = idx + 1
+			} else {
+				carry = append([]byte{}, data...)
+				continue
+			}
+		} else {
+			carry = nil
+		}
+
+		end := len(data)
+		for end > start {
+			lineEnd := end
+			idx := bytes.LastIndexByte(data[start:end], '\n')
+			lineStart := start
+			if idx >= 0 {
+				lineStart = start + idx + 1
+				end = start + idx
+			} else {
+				end = start
+			}
+			line := bytes.TrimRight(data[lineStart:lineEnd], "\r")
+			if len(line) == 0 {
+				continue
+			}
+			ts, err := p.parseLogTimestamp(parser, string(line))
+			if err != nil {
+				continue
+			}
+			if !started {
+				lastTs = ts.Unix()
+				started = true
+			}
+			if ts.Before(cutoff) {
+				nextOffset := offset + int64(lineEnd)
+				if lineEnd < len(data) && data[lineEnd] == '\n' {
+					nextOffset++
+				}
+				if nextOffset > size {
+					nextOffset = size
+				}
+				return nextOffset, lastTs, nil
+			}
+		}
+		if offset == 0 {
+			break
+		}
+	}
+
+	return 0, lastTs, nil
+}
+
 // parseLogLines 解析日志行并返回解析的记录数
 func (p *LogParser) parseLogLines(
-	reader io.Reader, websiteID string, parserResult *ParserResult) (int, int64) {
+	reader io.Reader, websiteID string, parserResult *ParserResult, window parseWindow) (int, int64, int64, int64) {
 	scanner := bufio.NewScanner(reader)
 	entriesCount := 0
+	var minTs int64
+	var maxTs int64
 
 	// 批量插入相关
-	const batchSize = 100
-	batch := make([]store.NginxLogRecord, 0, batchSize)
+	batch := make([]store.NginxLogRecord, 0, backfillBatchSize)
 
 	// 处理一批数据
 	processBatch := func() {
@@ -561,11 +981,21 @@ func (p *LogParser) parseLogLines(
 		if err != nil {
 			continue
 		}
+		ts := entry.Timestamp.Unix()
+		if !window.allows(ts) {
+			continue
+		}
 		batch = append(batch, *entry)
+		if minTs == 0 || ts < minTs {
+			minTs = ts
+		}
+		if ts > maxTs {
+			maxTs = ts
+		}
 		entriesCount++
 		parserResult.TotalEntries++ // 累加到总结果中，而非赋值
 
-		if len(batch) >= batchSize {
+		if len(batch) >= backfillBatchSize {
 			processBatch()
 		}
 	}
@@ -579,7 +1009,7 @@ func (p *LogParser) parseLogLines(
 		logrus.Errorf("扫描网站 %s 的文件时出错: %v", websiteID, err)
 	}
 
-	return entriesCount, totalBytes // 返回当前文件的日志条数
+	return entriesCount, totalBytes, minTs, maxTs // 返回当前文件的日志条数
 }
 
 func (p *LogParser) fillBatchLocations(batch []store.NginxLogRecord) {
@@ -806,6 +1236,33 @@ func (p *LogParser) parseLogLine(websiteID string, line string) (*store.NginxLog
 	default:
 		return p.parseRegexLogLine(parser, line)
 	}
+}
+
+func (p *LogParser) parseLogTimestamp(parser *logLineParser, line string) (time.Time, error) {
+	switch parser.parseType {
+	case parseTypeCaddyJSON:
+		decoder := json.NewDecoder(strings.NewReader(line))
+		decoder.UseNumber()
+		var payload map[string]interface{}
+		if err := decoder.Decode(&payload); err != nil {
+			return time.Time{}, err
+		}
+		return parseCaddyTime(payload, parser.timeLayout)
+	default:
+		return p.parseRegexLogTimestamp(parser, line)
+	}
+}
+
+func (p *LogParser) parseRegexLogTimestamp(parser *logLineParser, line string) (time.Time, error) {
+	matches := parser.regex.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return time.Time{}, errors.New("日志格式不匹配")
+	}
+	rawTime := extractField(matches, parser.indexMap, timeAliases)
+	if rawTime == "" {
+		return time.Time{}, errors.New("日志缺少时间字段")
+	}
+	return parseLogTime(rawTime, parser.timeLayout)
 }
 
 func (p *LogParser) parseRegexLogLine(parser *logLineParser, line string) (*store.NginxLogRecord, error) {

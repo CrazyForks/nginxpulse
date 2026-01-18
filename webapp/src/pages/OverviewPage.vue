@@ -509,6 +509,9 @@
           <div class="detail-ip-notice" v-if="detailMode === 'logs' && detailIpParsing">
             {{ t('logs.ipParsing', { progress: detailIpParsingProgressLabel }) }}
           </div>
+          <div class="detail-ip-notice" v-if="detailMode === 'logs' && detailParsingPending">
+            {{ t('logs.parsingPending') }}
+          </div>
           <div class="detail-list">
             <div class="table-wrapper">
               <table class="ranking-table" :class="{ 'detail-logs': detailMode === 'logs' }">
@@ -819,6 +822,7 @@ const detailLoading = ref(false);
 const detailError = ref(false);
 const detailIpParsing = ref(false);
 const detailIpParsingProgress = ref<number | null>(null);
+const detailParsingPending = ref(false);
 const detailIpParsingProgressText = computed(() => {
   if (detailIpParsingProgress.value === null) {
     return '';
@@ -1678,6 +1682,7 @@ async function openDetail(type: string) {
   detailError.value = false;
   detailIpParsing.value = false;
   detailIpParsingProgress.value = null;
+  detailParsingPending.value = false;
   detailLoadState.value = 'ready';
   detailRequestId += 1;
 
@@ -1709,6 +1714,7 @@ function closeDetail() {
   detailPage.value = 1;
   detailIpParsing.value = false;
   detailIpParsingProgress.value = null;
+  detailParsingPending.value = false;
   detailRankingRows.value = [];
   detailLogRows.value = [];
   resetDetailFilters('status');
@@ -1887,6 +1893,7 @@ async function loadDetailLogs(reset: boolean, requestId: number) {
 
     detailIpParsing.value = Boolean(result.ip_parsing);
     detailIpParsingProgress.value = detailIpParsing.value ? normalizeProgress(result.ip_parsing_progress) : null;
+    detailParsingPending.value = Boolean(result.parsing_pending);
     const logs = result.logs || [];
     updateLogRows(logs, reset, scope);
     const pages = result.pagination?.pages || 1;
@@ -1901,6 +1908,7 @@ async function loadDetailLogs(reset: boolean, requestId: number) {
     detailLoadState.value = 'error';
     detailIpParsing.value = false;
     detailIpParsingProgress.value = null;
+    detailParsingPending.value = false;
   } finally {
     if (requestId === detailRequestId) {
       detailLoading.value = false;

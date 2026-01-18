@@ -10,9 +10,9 @@ import (
 )
 
 // InitialScan performs an initial log scan after startup.
-func InitialScan(parser *ingest.LogParser) {
+func InitialScan(parser *ingest.LogParser, interval time.Duration) {
 	logrus.Info("****** 2 初始扫描 ******")
-	ExecutePeriodicTasks(parser)
+	ExecutePeriodicTasks(parser, interval)
 }
 
 // RunScheduler executes periodic tasks on a ticker until ctx is canceled.
@@ -27,7 +27,7 @@ func RunScheduler(ctx context.Context, parser *ingest.LogParser, interval time.D
 		case <-ticker.C:
 			iteration++
 			logrus.WithFields(logrus.Fields{"iteration": iteration}).Info("定期任务开始")
-			ExecutePeriodicTasks(parser)
+			ExecutePeriodicTasks(parser, interval)
 		case <-ctx.Done():
 			return
 		}
@@ -35,7 +35,7 @@ func RunScheduler(ctx context.Context, parser *ingest.LogParser, interval time.D
 }
 
 // ExecutePeriodicTasks runs log rotation, cleanup, and log scanning.
-func ExecutePeriodicTasks(parser *ingest.LogParser) {
+func ExecutePeriodicTasks(parser *ingest.LogParser, interval time.Duration) {
 	{ // 1 日志轮转
 		if err := logging.RotateLogFile(); err != nil {
 			logrus.WithError(err).Warn("日志轮转失败")
@@ -80,4 +80,29 @@ func ExecutePeriodicTasks(parser *ingest.LogParser) {
 				successCount, len(results), totalEntries, totalDuration.Seconds())
 		}
 	}
+
+	{ // 4 历史日志回填
+		backfillDuration, backfillBytes := backfillBudget(interval)
+		backfillResult := parser.BackfillHistory(backfillDuration, backfillBytes)
+		if backfillResult.ProcessedBytes > 0 {
+			logrus.Infof("历史日志回填完成: %d 条记录, %.2f MB",
+				backfillResult.ProcessedEntries,
+				float64(backfillResult.ProcessedBytes)/(1024*1024))
+		}
+	}
+}
+
+func backfillBudget(interval time.Duration) (time.Duration, int64) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	duration := interval / 3
+	if duration < 500*time.Millisecond {
+		duration = 500 * time.Millisecond
+	}
+	if duration > 8*time.Second {
+		duration = 8 * time.Second
+	}
+	const maxBytes = int64(32 * 1024 * 1024)
+	return duration, maxBytes
 }
