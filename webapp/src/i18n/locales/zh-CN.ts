@@ -105,7 +105,9 @@ const zhCN = {
     stepLabel: '步骤 {value}/{total}',
     validationTitle: '请先修正以下问题',
     warningTitle: '注意事项',
+    readOnlyTitle: '只读模式',
     readOnly: '当前配置来自环境变量，无法保存。',
+    readOnlyEnvHint: '如需系统接管配置文件，请删除环境变量并重启容器。',
     websiteBlock: '站点 {value}',
     steps: {
       website: {
@@ -134,6 +136,7 @@ const zhCN = {
       saving: '保存中...',
       saved: '配置应用成功，已触发重启',
       savedManage: '配置已保存，服务即将重启',
+      copyConfig: '复制配置 JSON',
       addWebsite: '添加站点',
       remove: '移除',
       advanced: '高级',
@@ -197,6 +200,8 @@ const zhCN = {
       parseJson: 'JSON 解析失败: {message}',
       sourcesArray: 'sources 必须是数组',
     },
+    copySuccess: '已复制到剪贴板',
+    copyFailed: '复制失败，请手动复制预览内容',
   },
   overview: {
     title: '访问概况',

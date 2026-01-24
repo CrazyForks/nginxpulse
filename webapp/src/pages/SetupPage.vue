@@ -72,6 +72,17 @@
         </aside>
 
         <section class="setup-content">
+          <div v-if="configReadonly" class="setup-alert warning setup-readonly-banner">
+            <div class="setup-alert-title">{{ t('setup.readOnlyTitle') }}</div>
+            <div class="setup-hint">{{ t('setup.readOnly') }}</div>
+            <div class="setup-hint">{{ t('setup.readOnlyEnvHint') }}</div>
+            <div class="setup-inline-actions">
+              <button class="ghost-button" type="button" @click="copyConfig">
+                {{ t('setup.actions.copyConfig') }}
+              </button>
+              <span v-if="copyStatus" class="setup-hint">{{ copyStatus }}</span>
+            </div>
+          </div>
           <div class="setup-scroll">
             <transition name="setup-fade" mode="out-in">
               <div :key="currentStep" class="card setup-card" data-anim>
@@ -475,6 +486,8 @@ const validationErrors = ref<FieldError[]>([]);
 const validationWarnings = ref<FieldError[]>([]);
 const fieldErrors = ref<Record<string, string>>({});
 const configReadonly = ref(false);
+const copyStatus = ref('');
+let copyStatusTimer: number | null = null;
 
 const serverPort = ref(':8089');
 const databaseDraft = reactive({
@@ -786,6 +799,34 @@ async function saveAll() {
   }
 }
 
+async function copyConfig() {
+  if (!configPreview.value) {
+    return;
+  }
+  if (copyStatusTimer) {
+    window.clearTimeout(copyStatusTimer);
+    copyStatusTimer = null;
+  }
+  try {
+    await navigator.clipboard.writeText(configPreview.value);
+    copyStatus.value = t('setup.copySuccess');
+  } catch (err) {
+    const textarea = document.createElement('textarea');
+    textarea.value = configPreview.value;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    copyStatus.value = ok ? t('setup.copySuccess') : t('setup.copyFailed');
+  }
+  copyStatusTimer = window.setTimeout(() => {
+    copyStatus.value = '';
+    copyStatusTimer = null;
+  }, 2000);
+}
+
 function startAutoRefresh() {
   if (autoRefreshTimer) {
     window.clearInterval(autoRefreshTimer);
@@ -857,6 +898,10 @@ onBeforeUnmount(() => {
   if (autoRefreshTimer) {
     window.clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
+  }
+  if (copyStatusTimer) {
+    window.clearTimeout(copyStatusTimer);
+    copyStatusTimer = null;
   }
 });
 </script>

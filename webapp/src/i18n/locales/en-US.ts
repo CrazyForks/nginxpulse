@@ -105,7 +105,9 @@ const enUS = {
     stepLabel: 'Step {value}/{total}',
     validationTitle: 'Please fix the following issues',
     warningTitle: 'Notes',
+    readOnlyTitle: 'Read-only mode',
     readOnly: 'Config is provided by environment variables and cannot be saved.',
+    readOnlyEnvHint: 'To let the system manage config files, remove env vars and restart the container.',
     websiteBlock: 'Website {value}',
     steps: {
       website: {
@@ -134,6 +136,7 @@ const enUS = {
       saving: 'Saving...',
       saved: 'Config applied. Restart triggered.',
       savedManage: 'Config saved. Service will restart.',
+      copyConfig: 'Copy config JSON',
       addWebsite: 'Add website',
       remove: 'Remove',
       advanced: 'Advanced',
@@ -197,6 +200,8 @@ const enUS = {
       parseJson: 'JSON parse failed: {message}',
       sourcesArray: 'sources must be an array',
     },
+    copySuccess: 'Copied to clipboard',
+    copyFailed: 'Copy failed. Please copy from the preview manually.',
   },
   overview: {
     title: 'Overview',

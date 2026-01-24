@@ -390,6 +390,18 @@ body.dark-mode .setup-footer::before {
   padding-left: 18px;
 }
 
+.setup-readonly-banner {
+  margin-bottom: 12px;
+}
+
+.setup-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
 
 .setup-review {
   display: grid;
