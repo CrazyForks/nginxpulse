@@ -6,6 +6,17 @@
 ## Docker 单容器（内置 PostgreSQL）
 镜像内已集成 PostgreSQL，推荐此方式。
 
+一键启动（极简配置，首次启动进入初始化向导）：
+```bash
+docker run -d --name nginxpulse \
+  -p 8088:8088 \
+  -v ./docker_local/logs:/share/logs:ro \
+  -v ./docker_local/nginxpulse_data:/app/var/nginxpulse_data \
+  -v ./docker_local/pgdata:/app/var/pgdata \
+  -v /etc/localtime:/etc/localtime:ro \
+  magiccoders/nginxpulse:latest
+```
+
 示例（需挂载日志与数据目录）：
 ```bash
 docker run -d --name nginxpulse \
@@ -34,6 +45,11 @@ docker run -d --name nginxpulse \
 - 调整 `WEBSITES` 与日志挂载路径。
 - 挂载 `nginxpulse_data` 保持数据持久化；如使用内置 PG 再挂载 `pgdata`。
 - 保持 `/etc/localtime` 只读挂载，以确保时区一致。
+
+一键启动（极简配置，首次启动进入初始化向导）：
+```bash
+docker compose -f docker-compose-simple.yml up -d
+```
 
 ## 单体部署（非 Docker）
 适用于裸机或自建服务环境。需要用户自行安装 PostgreSQL。

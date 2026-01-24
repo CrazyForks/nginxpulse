@@ -106,6 +106,18 @@ docker run -d --name nginxpulse \
   magiccoders/nginxpulse:latest
 ```
 
+One-click start (minimal config, first launch opens Setup Wizard):
+
+```bash
+docker run -d --name nginxpulse \
+  -p 8088:8088 \
+  -v ./docker_local/logs:/share/logs:ro \
+  -v ./docker_local/nginxpulse_data:/app/var/nginxpulse_data \
+  -v ./docker_local/pgdata:/app/var/pgdata \
+  -v /etc/localtime:/etc/localtime:ro \
+  magiccoders/nginxpulse:latest
+```
+
 Build and run locally:
 
 ```bash
@@ -148,6 +160,12 @@ Use remote image (Docker Hub): replace `docker-compose.yml` with the remote imag
 
 ```bash
 docker compose up -d
+```
+
+One-click start (minimal config, first launch opens Setup Wizard):
+
+```bash
+docker compose -f docker-compose-simple.yml up -d
 ```
 
 Build from source: keep the repo `docker-compose.yml` and run:

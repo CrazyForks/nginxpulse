@@ -8,10 +8,6 @@ services:
     ports:
       - "8088:8088"
       - "8089:8089"
-    environment:
-      POSTGRES_USER: "nginxpulse"
-      POSTGRES_PASSWORD: "nginxpulse"
-      POSTGRES_DB: "nginxpulse"
     volumes:
       - ./docker_local/logs:/share/logs:ro
       - ./docker_local/nginxpulse_data:/app/var/nginxpulse_data

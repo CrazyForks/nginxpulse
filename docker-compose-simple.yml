@@ -1,0 +1,12 @@
+services:
+  nginxpulse:
+    image: magiccoders/nginxpulse:latest
+    container_name: nginxpulse_local
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./docker_local/logs:/share/logs:ro # 挂载日志目录
+      - ./docker_local/nginxpulse_data:/app/var/nginxpulse_data #容器内数据持久化
+      - ./docker_local/pgdata:/app/var/pgdata #PostgreSQL数据持久化
+      - /etc/localtime:/etc/localtime:ro #容器内时区定义
+    restart: unless-stopped

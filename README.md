@@ -106,6 +106,18 @@ docker run -d --name nginxpulse \
   magiccoders/nginxpulse:latest
 ```
 
+一键启动（极简配置，首次启动进入初始化向导）：
+
+```bash
+docker run -d --name nginxpulse \
+  -p 8088:8088 \
+  -v ./docker_local/logs:/share/logs:ro \
+  -v ./docker_local/nginxpulse_data:/app/var/nginxpulse_data \
+  -v ./docker_local/pgdata:/app/var/pgdata \
+  -v /etc/localtime:/etc/localtime:ro \
+  magiccoders/nginxpulse:latest
+```
+
 本地构建运行：
 
 ```bash
@@ -148,6 +160,12 @@ GitHub Actions 自动发布（多架构镜像）：
 
 ```bash
 docker compose up -d
+```
+
+一键启动（极简配置，首次启动进入初始化向导）：
+
+```bash
+docker compose -f docker-compose-simple.yml up -d
 ```
 
 本地构建运行（基于源码构建镜像）：保持仓库自带的 `docker-compose.yml`，执行：

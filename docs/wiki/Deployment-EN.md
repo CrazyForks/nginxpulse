@@ -6,6 +6,17 @@
 ## Docker single-container (built-in PostgreSQL)
 The image includes PostgreSQL. Recommended for most users.
 
+One-click start (minimal config, first launch opens Setup Wizard):
+```bash
+docker run -d --name nginxpulse \
+  -p 8088:8088 \
+  -v ./docker_local/logs:/share/logs:ro \
+  -v ./docker_local/nginxpulse_data:/app/var/nginxpulse_data \
+  -v ./docker_local/pgdata:/app/var/pgdata \
+  -v /etc/localtime:/etc/localtime:ro \
+  magiccoders/nginxpulse:latest
+```
+
 Example:
 ```bash
 docker run -d --name nginxpulse \
@@ -34,6 +45,11 @@ A `docker-compose.yml` is provided in the repo. Update:
 - `WEBSITES` and log volume
 - `nginxpulse_data` volume; mount `pgdata` only when using built-in PG
 - `/etc/localtime` mount for timezone
+
+One-click start (minimal config, first launch opens Setup Wizard):
+```bash
+docker compose -f docker-compose-simple.yml up -d
+```
 
 ## Single binary (non-Docker)
 You must install PostgreSQL yourself.
