@@ -46,6 +46,20 @@
             <div class="metrics-title">{{ t('overview.metricsTitle') }}</div>
             <div class="metrics-sub">{{ t('overview.metricsSub') }}</div>
           </div>
+          <div class="metrics-range">
+            <span class="metrics-range-label">{{ t('common.date') }}</span>
+            <div class="range-tabs inline">
+              <button
+                v-for="tab in rangeTabs"
+                :key="tab.value"
+                class="range-tab"
+                :class="{ active: dateRange === tab.value }"
+                @click="setRange(tab.value)"
+              >
+                {{ tab.label }}
+              </button>
+            </div>
+          </div>
         </div>
         <div class="metrics-grid">
           <div class="metric-tile status-tile">
@@ -111,18 +125,6 @@
         </div>
       </div>
     </section>
-
-    <div class="range-tabs">
-      <button
-        v-for="tab in rangeTabs"
-        :key="tab.value"
-        class="range-tab"
-        :class="{ active: dateRange === tab.value }"
-        @click="setRange(tab.value)"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
 
     <section class="trend-grid">
       <div class="card trend-card" data-anim>

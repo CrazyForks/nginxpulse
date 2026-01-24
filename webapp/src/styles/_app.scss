@@ -736,6 +736,19 @@ body.dark-mode .card {
     gap: 16px;
 }
 
+.metrics-range {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.metrics-range-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+}
+
 .metrics-title {
     font-size: 18px;
     font-weight: 700;
@@ -842,6 +855,16 @@ body.dark-mode .metric-tile {
     display: flex;
     gap: 12px;
     margin-bottom: 20px;
+}
+
+.range-tabs.inline {
+    margin-bottom: 0;
+    gap: 10px;
+}
+
+.range-tabs.inline .range-tab {
+    padding: 6px 12px;
+    font-size: 12px;
 }
 
 .range-tab {

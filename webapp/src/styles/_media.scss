@@ -94,4 +94,20 @@
   .map-container {
     height: 240px;
   }
+
+  .metrics-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .metrics-range {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .range-tabs.inline {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
