@@ -19,50 +19,34 @@
 
     <div class="card logs-control-box">
       <div class="logs-control-content">
-        <div class="search-box">
-          <InputText
-            v-model="searchInput"
-            class="search-input"
-            :placeholder="t('logs.searchPlaceholder')"
-            @keyup.enter="applySearch"
-          />
-          <Button class="search-btn" severity="primary" @click="applySearch">{{ t('common.search') }}</Button>
-          <Button
-            class="reparse-btn"
-            outlined
-            severity="danger"
-            :label="reparseButtonLabel"
-            :disabled="!currentWebsiteId || isParsingBusy"
-            @click="openReparseDialog"
-          />
-          <Button
-            class="export-btn"
-            outlined
-            severity="secondary"
-            :label="exportButtonLabel"
-            :loading="exportLoading"
-            :disabled="!currentWebsiteId || exportLoading"
-            @click="handleExport"
-          />
-        </div>
-        <div class="sort-controls">
-          <div class="filter-row filter-row-toggles">
-            <div class="filter-toggle-container">
-              <Checkbox v-model="excludeInternal" inputId="exclude-internal" binary />
-              <label for="exclude-internal">{{ t('logs.excludeInternal') }}</label>
-            </div>
-            <div class="filter-toggle-container">
-              <Checkbox v-model="pageviewOnly" inputId="pageview-only" binary />
-              <label for="pageview-only">{{ t('logs.excludeNoPv') }}</label>
-            </div>
-            <div class="filter-toggle-container">
-              <Checkbox v-model="excludeSpider" inputId="exclude-spider" binary />
-              <label for="exclude-spider">{{ t('logs.excludeSpider') }}</label>
-            </div>
-            <div class="filter-toggle-container">
-              <Checkbox v-model="excludeForeign" inputId="exclude-foreign" binary />
-              <label for="exclude-foreign">{{ t('logs.excludeForeign') }}</label>
-            </div>
+        <div class="control-row">
+          <div class="search-box">
+            <InputText
+              v-model="searchInput"
+              class="search-input"
+              :placeholder="t('logs.searchPlaceholder')"
+              @keyup.enter="applySearch"
+            />
+            <Button class="search-btn" severity="primary" @click="applySearch">{{ t('common.search') }}</Button>
+            <span class="action-divider" aria-hidden="true"></span>
+            <Button
+              class="reparse-btn"
+              outlined
+              severity="danger"
+              :label="reparseButtonLabel"
+              :disabled="!currentWebsiteId || isParsingBusy"
+              @click="openReparseDialog"
+            />
+            <span class="action-divider" aria-hidden="true"></span>
+            <Button
+              class="export-btn"
+              outlined
+              severity="secondary"
+              :label="exportButtonLabel"
+              :loading="exportLoading"
+              :disabled="!currentWebsiteId || exportLoading"
+              @click="handleExport"
+            />
           </div>
           <div class="filter-row filter-row-fields">
             <div class="status-code-container">
@@ -112,8 +96,37 @@
                 optionValue="value"
               />
             </div>
+            <button
+              class="advanced-toggle"
+              type="button"
+              :aria-expanded="advancedFiltersOpen"
+              @click="advancedFiltersOpen = !advancedFiltersOpen"
+            >
+              <i class="ri-filter-3-line" aria-hidden="true"></i>
+              <span>{{ advancedFiltersOpen ? t('logs.collapseFilters') : t('logs.advancedFilters') }}</span>
+            </button>
           </div>
         </div>
+        <transition name="filter-collapse">
+          <div v-if="advancedFiltersOpen" class="filter-row filter-row-toggles">
+            <div class="filter-toggle-container">
+              <Checkbox v-model="excludeInternal" inputId="exclude-internal" binary />
+              <label for="exclude-internal">{{ t('logs.excludeInternal') }}</label>
+            </div>
+            <div class="filter-toggle-container">
+              <Checkbox v-model="pageviewOnly" inputId="pageview-only" binary />
+              <label for="pageview-only">{{ t('logs.excludeNoPv') }}</label>
+            </div>
+            <div class="filter-toggle-container">
+              <Checkbox v-model="excludeSpider" inputId="exclude-spider" binary />
+              <label for="exclude-spider">{{ t('logs.excludeSpider') }}</label>
+            </div>
+            <div class="filter-toggle-container">
+              <Checkbox v-model="excludeForeign" inputId="exclude-foreign" binary />
+              <label for="exclude-foreign">{{ t('logs.excludeForeign') }}</label>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
     <div v-if="ipParsing || parsingPending || ipGeoParsing || ipGeoPending" class="logs-ip-notice">
@@ -413,6 +426,7 @@ const statusCodeFilter = ref<number | null>(null);
 const sortField = ref(getUserPreference('logsSortField', 'timestamp'));
 const sortOrder = ref(getUserPreference('logsSortOrder', 'desc'));
 const pageSize = ref(Number(getUserPreference('logsPageSize', '100')));
+const advancedFiltersOpen = ref(false);
 const currentPage = ref(1);
 const totalPages = ref(0);
 const pageJump = ref<number | null>(null);
@@ -1060,6 +1074,7 @@ function nextPage() {
   margin-bottom: 18px;
   position: relative;
   z-index: 30;
+  --control-height: 40px;
 }
 
 .logs-layout .card:hover {
@@ -1080,10 +1095,28 @@ function nextPage() {
 
 .logs-control-content {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+
+.logs-control-box :deep(.p-button),
+.logs-control-box :deep(.p-inputtext),
+.logs-control-box :deep(.p-inputnumber-input),
+.logs-control-box :deep(.p-dropdown) {
+  height: var(--control-height);
+}
+
+.logs-control-box :deep(.p-dropdown-label) {
+  display: flex;
+  align-items: center;
 }
 
 .search-box {
@@ -1104,18 +1137,8 @@ function nextPage() {
 .search-btn {
   font-weight: 600;
   border-radius: 12px;
-  min-width: 90px;
+  min-width: 88px;
   padding: 0 16px;
-}
-
-.sort-controls {
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  flex: 1 1 520px;
-  min-width: 320px;
 }
 
 .filter-row {
@@ -1125,8 +1148,31 @@ function nextPage() {
   gap: 12px;
 }
 
+.filter-collapse-enter-active,
+.filter-collapse-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.filter-collapse-enter-from,
+.filter-collapse-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .filter-row-fields {
   gap: 16px;
+  margin-left: auto;
+  justify-content: flex-end;
+  flex: 1 1 520px;
+  min-width: 320px;
+}
+
+.filter-row-toggles {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  gap: 10px;
 }
 
 .filter-toggle-container {
@@ -1142,6 +1188,7 @@ function nextPage() {
   color: var(--text);
   flex: 0 0 auto;
   white-space: nowrap;
+  min-height: var(--control-height);
 }
 
 .status-code-container {
@@ -1150,6 +1197,15 @@ function nextPage() {
   gap: 8px;
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.status-code-container label,
+.sort-field-container label,
+.sort-order-container label,
+.page-size-container label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .status-code-input {
@@ -1335,18 +1391,54 @@ function nextPage() {
   border-radius: 10px;
 }
 
+.action-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  opacity: 0.7;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height);
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(var(--primary-color-rgb), 0.3);
+  background: rgba(var(--primary-color-rgb), 0.06);
+  color: var(--accent-color);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.advanced-toggle:hover {
+  border-color: rgba(var(--primary-color-rgb), 0.5);
+  background: rgba(var(--primary-color-rgb), 0.12);
+}
+
 .reparse-btn {
   border-radius: 12px;
   font-weight: 600;
-  min-width: 150px;
-  padding: 0 18px;
+  min-width: 118px;
+  padding: 0 12px;
 }
 
 .export-btn {
   border-radius: 12px;
   font-weight: 600;
-  min-width: 120px;
+  min-width: 112px;
   padding: 0 16px;
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+}
+
+.export-btn:not(:disabled):hover {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.6);
 }
 
 .reparse-dialog :deep(.p-dialog-content) {
@@ -1374,20 +1466,28 @@ function nextPage() {
 
 @media (max-width: 900px) {
   .logs-control-content {
-    flex-direction: column;
     align-items: stretch;
+  }
+
+  .control-row {
+    align-items: flex-start;
   }
 
   .search-box {
     width: 100%;
   }
 
-  .sort-controls {
-    gap: 12px;
+  .filter-row-fields {
+    margin-left: 0;
+    justify-content: flex-start;
   }
 
   .filter-row {
     gap: 10px;
+  }
+
+  .action-divider {
+    display: none;
   }
 
   .pagination-controls {
