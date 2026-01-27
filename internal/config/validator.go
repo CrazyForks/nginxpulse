@@ -40,7 +40,6 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 		addError("websites", "至少需要配置一个站点")
 	}
 
-	allowMissingPaths := IsSetupMode()
 	for i, site := range cfg.Websites {
 		sitePrefix := fmt.Sprintf("websites[%d]", i)
 		if strings.TrimSpace(site.Name) == "" {
@@ -51,12 +50,8 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 			if strings.TrimSpace(site.LogPath) == "" {
 				addError(sitePrefix+".logPath", "日志路径不能为空")
 			} else if opts.CheckPaths {
-				if err, warn := validatePath(site.LogPath, allowMissingPaths); err != nil {
-					if warn {
-						addWarning(sitePrefix+".logPath", err.Error())
-					} else {
-						addError(sitePrefix+".logPath", err.Error())
-					}
+				if err := validatePath(site.LogPath); err != nil {
+					addError(sitePrefix+".logPath", err.Error())
 				}
 			}
 			continue
@@ -86,21 +81,13 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 					addError(srcPrefix, "local 需要 path 或 pattern")
 				} else if opts.CheckPaths {
 					if src.Path != "" {
-						if err, warn := validatePath(src.Path, allowMissingPaths); err != nil {
-							if warn {
-								addWarning(srcPrefix+".path", err.Error())
-							} else {
-								addError(srcPrefix+".path", err.Error())
-							}
+						if err := validatePath(src.Path); err != nil {
+							addError(srcPrefix+".path", err.Error())
 						}
 					}
 					if src.Pattern != "" {
-						if err, warn := validatePath(src.Pattern, allowMissingPaths); err != nil {
-							if warn {
-								addWarning(srcPrefix+".pattern", err.Error())
-							} else {
-								addError(srcPrefix+".pattern", err.Error())
-							}
+						if err := validatePath(src.Pattern); err != nil {
+							addError(srcPrefix+".pattern", err.Error())
 						}
 					}
 				}
@@ -169,29 +156,20 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 	return result
 }
 
-func validatePath(value string, allowMissing bool) (error, bool) {
+func validatePath(value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return fmt.Errorf("路径不能为空"), false
+		return fmt.Errorf("路径不能为空")
 	}
 	if strings.Contains(value, "*") {
 		matches, err := filepath.Glob(value)
 		if err != nil || len(matches) == 0 {
-			if allowMissing {
-				return fmt.Errorf("日志路径未匹配到任何文件（可先完成配置，稍后再创建）"), true
-			}
-			return fmt.Errorf("日志路径未匹配到任何文件"), false
+			return fmt.Errorf("日志路径未匹配到任何文件")
 		}
-		return nil, false
+		return nil
 	}
 	if _, err := os.Stat(value); err != nil {
-		if os.IsNotExist(err) && allowMissing {
-			return fmt.Errorf("日志路径不存在或不可访问（可先完成配置，稍后再创建）"), true
-		}
-		if os.IsPermission(err) {
-			return fmt.Errorf("日志路径不可访问，请确保容器运行用户有权限"), false
-		}
-		return fmt.Errorf("日志路径不存在或不可访问"), false
+		return fmt.Errorf("日志路径不存在或不可访问")
 	}
-	return nil, false
+	return nil
 }
