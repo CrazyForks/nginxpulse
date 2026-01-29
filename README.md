@@ -10,6 +10,8 @@
 
 轻量级 Nginx 访问日志分析与可视化面板，提供实时统计、PV 过滤、IP 归属地与客户端解析。
 
+源码仓库：https://github.com/likaia/nginxpulse
+
 > ⚠️注意：此文档只讲解了如何使用这个项目，详细文档与示例配置请移步Wiki：https://github.com/likaia/nginxpulse/wiki
 
 ![demo-img-1.png](docs/demo-img-1.png)

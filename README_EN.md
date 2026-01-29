@@ -10,6 +10,8 @@
 
 Lightweight Nginx access log analytics and visualization dashboard with realtime stats, PV filtering, IP geo lookup, and client parsing.
 
+Source repository: https://github.com/likaia/nginxpulse
+
 > ⚠️ Note: This document focuses on quick usage. For detailed docs and example configs, see the Wiki: https://github.com/likaia/nginxpulse/wiki
 
 ![demo-img-1.png](docs/demo-img-1.png)

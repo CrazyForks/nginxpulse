@@ -12,3 +12,4 @@ services:
       - ./docker_local/pgdata:/app/var/pgdata
       - /etc/localtime:/etc/localtime
     restart: unless-stopped
+  nginxpulse_data/nginxpulse.log

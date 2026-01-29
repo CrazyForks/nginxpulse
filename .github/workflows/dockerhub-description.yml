@@ -1,0 +1,62 @@
+name: Update Docker Hub Description
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+      - README_EN.md
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dockerhub-description:
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO }}
+    steps:
+      - name: Check Docker Hub secrets
+        id: docker_secrets
+        run: |
+          if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_TOKEN" && -n "$DOCKERHUB_REPO" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Docker Hub secrets missing. Skip dockerhub description update."
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        if: steps.docker_secrets.outputs.enabled == 'true'
+
+      - name: Select README (CN default, EN fallback)
+        id: readme
+        if: steps.docker_secrets.outputs.enabled == 'true'
+        run: |
+          if [ -s "README.md" ]; then
+            echo "path=./README.md" >> "$GITHUB_OUTPUT"
+            echo "short_desc=轻量级 Nginx 访问日志分析与可视化面板，提供实时统计、PV 过滤、IP 归属地与客户端解析。" >> "$GITHUB_OUTPUT"
+          elif [ -s "README_EN.md" ]; then
+            echo "path=./README_EN.md" >> "$GITHUB_OUTPUT"
+            echo "short_desc=Lightweight Nginx access log analytics and visualization dashboard with real-time stats, PV filtering, IP geo lookup, and client parsing." >> "$GITHUB_OUTPUT"
+          else
+            echo "path=./README.md" >> "$GITHUB_OUTPUT"
+            echo "short_desc=轻量级 Nginx 访问日志分析与可视化面板，提供实时统计、PV 过滤、IP 归属地与客户端解析。" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update Docker Hub Description
+        if: steps.docker_secrets.outputs.enabled == 'true'
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_REPO }}
+          short-description: ${{ steps.readme.outputs.short_desc }}
+          readme-filepath: ${{ steps.readme.outputs.path }}
+          enable-url-completion: true
