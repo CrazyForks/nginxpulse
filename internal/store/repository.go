@@ -2,12 +2,16 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"math/rand"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/likaia/nginxpulse/internal/config"
 	"github.com/likaia/nginxpulse/internal/sqlutil"
@@ -514,19 +518,108 @@ func (r *Repository) HasLogs(websiteID string) (bool, error) {
 	return true, nil
 }
 
-// 为特定网站批量插入日志记录
+func isSQLState(err error, code string) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == code
+	}
+	return false
+}
+
+func sortLogsForLocking(logs []NginxLogRecord) {
+	// 关键目标：让不同并发事务对相同 key 的写入顺序尽量一致，从而降低死锁概率。
+	sort.SliceStable(logs, func(i, j int) bool {
+		li, lj := logs[i], logs[j]
+		if li.IP != lj.IP {
+			return li.IP < lj.IP
+		}
+		if !li.Timestamp.Equal(lj.Timestamp) {
+			return li.Timestamp.Before(lj.Timestamp)
+		}
+		if li.Url != lj.Url {
+			return li.Url < lj.Url
+		}
+		if li.UserBrowser != lj.UserBrowser {
+			return li.UserBrowser < lj.UserBrowser
+		}
+		if li.UserOs != lj.UserOs {
+			return li.UserOs < lj.UserOs
+		}
+		if li.UserDevice != lj.UserDevice {
+			return li.UserDevice < lj.UserDevice
+		}
+		if li.Referer != lj.Referer {
+			return li.Referer < lj.Referer
+		}
+		if li.Method != lj.Method {
+			return li.Method < lj.Method
+		}
+		if li.Status != lj.Status {
+			return li.Status < lj.Status
+		}
+		if li.BytesSent != lj.BytesSent {
+			return li.BytesSent < lj.BytesSent
+		}
+		return false
+	})
+}
+
+// 为特定网站批量插入日志记录（带死锁重试 + 锁顺序排序）
 func (r *Repository) BatchInsertLogsForWebsite(websiteID string, logs []NginxLogRecord) error {
 	if len(logs) == 0 {
 		return nil
 	}
 
+	// 不修改调用方的 slice，避免潜在副作用
+	logsCopy := append([]NginxLogRecord(nil), logs...)
+	sortLogsForLocking(logsCopy)
+
+	const (
+		maxAttempts = 5
+		baseDelay   = 50 * time.Millisecond
+		maxDelay    = 2 * time.Second
+	)
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := r.batchInsertLogsForWebsiteOnce(websiteID, logsCopy)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		// 仅对 PostgreSQL deadlock (SQLSTATE 40P01) 重试
+		if !isSQLState(err, "40P01") || attempt == maxAttempts {
+			return err
+		}
+
+		// 指数退避 + jitter
+		delay := baseDelay * time.Duration(1<<(attempt-1))
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+		jitter := time.Duration(rnd.Int63n(int64(baseDelay))) // [0, baseDelay)
+
+		logrus.WithFields(logrus.Fields{
+			"website_id": websiteID,
+			"attempt":    attempt,
+			"sleep":      (delay + jitter).String(),
+		}).WithError(err).Warn("检测到数据库死锁(40P01)，准备重试批量写入")
+
+		time.Sleep(delay + jitter)
+	}
+	return lastErr
+}
+
+func (r *Repository) batchInsertLogsForWebsiteOnce(websiteID string, logs []NginxLogRecord) (err error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
 
@@ -567,6 +660,8 @@ func (r *Repository) BatchInsertLogsForWebsite(websiteID string, logs []NginxLog
 	cache := newDimCaches()
 	aggBatch := newAggBatch()
 	sessionCache := make(map[string]sessionState)
+	// 将 first_seen 的写入从“每条日志一次 upsert”改为“本批次去重后按 ip_id 顺序写入”，降低死锁概率与锁竞争。
+	firstSeenMinTs := make(map[int64]int64)
 
 	// 执行批量插入
 	for _, log := range logs {
@@ -620,8 +715,9 @@ func (r *Repository) BatchInsertLogsForWebsite(websiteID string, logs []NginxLog
 		}
 
 		if log.PageviewFlag == 1 {
-			if _, err := firstSeenStmt.Exec(ipID, log.Timestamp.Unix()); err != nil {
-				return err
+			ts := log.Timestamp.Unix()
+			if prev, ok := firstSeenMinTs[ipID]; !ok || ts < prev {
+				firstSeenMinTs[ipID] = ts
 			}
 			if err := updateSessionFromLog(
 				sessions,
@@ -630,13 +726,27 @@ func (r *Repository) BatchInsertLogsForWebsite(websiteID string, logs []NginxLog
 				uaID,
 				locationID,
 				urlID,
-				log.Timestamp.Unix(),
+				ts,
 			); err != nil {
 				return err
 			}
 		}
 
 		aggBatch.add(log, ipID)
+	}
+
+	// 统一顺序写入 first_seen：按 ip_id 升序，避免不同事务对同一批 key 的锁顺序不一致。
+	if len(firstSeenMinTs) > 0 {
+		ipIDs := make([]int64, 0, len(firstSeenMinTs))
+		for ipID := range firstSeenMinTs {
+			ipIDs = append(ipIDs, ipID)
+		}
+		sort.Slice(ipIDs, func(i, j int) bool { return ipIDs[i] < ipIDs[j] })
+		for _, ipID := range ipIDs {
+			if _, err := firstSeenStmt.Exec(ipID, firstSeenMinTs[ipID]); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := applyAggUpdates(aggs, aggBatch); err != nil {
@@ -1375,6 +1485,112 @@ func applyAggUpdates(aggs *aggStatements, batch *aggBatch) error {
 		return nil
 	}
 
+	// 注意：map 遍历顺序是随机的，不同事务可能以不同顺序对相同 key 做 upsert，容易造成锁顺序不一致进而死锁。
+	// 因此这里对 key 做排序，确保锁获取顺序稳定。
+	if len(batch.hourly) > 0 {
+		buckets := make([]int64, 0, len(batch.hourly))
+		for bucket := range batch.hourly {
+			buckets = append(buckets, bucket)
+		}
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		for _, bucket := range buckets {
+			counts := batch.hourly[bucket]
+			if counts == nil {
+				continue
+			}
+			if _, err := aggs.upsertHourly.Exec(
+				bucket,
+				counts.pv,
+				counts.traffic,
+				counts.s2xx,
+				counts.s3xx,
+				counts.s4xx,
+				counts.s5xx,
+				counts.other,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(batch.daily) > 0 {
+		days := make([]string, 0, len(batch.daily))
+		for day := range batch.daily {
+			days = append(days, day)
+		}
+		sort.Strings(days)
+		for _, day := range days {
+			counts := batch.daily[day]
+			if counts == nil {
+				continue
+			}
+			if _, err := aggs.upsertDaily.Exec(
+				day,
+				counts.pv,
+				counts.traffic,
+				counts.s2xx,
+				counts.s3xx,
+				counts.s4xx,
+				counts.s5xx,
+				counts.other,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(batch.hourlyIPs) > 0 {
+		buckets := make([]int64, 0, len(batch.hourlyIPs))
+		for bucket := range batch.hourlyIPs {
+			buckets = append(buckets, bucket)
+		}
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		for _, bucket := range buckets {
+			ips := batch.hourlyIPs[bucket]
+			if len(ips) == 0 {
+				continue
+			}
+			ipIDs := make([]int64, 0, len(ips))
+			for ipID := range ips {
+				ipIDs = append(ipIDs, ipID)
+			}
+			sort.Slice(ipIDs, func(i, j int) bool { return ipIDs[i] < ipIDs[j] })
+			for _, ipID := range ipIDs {
+				if _, err := aggs.insertHourlyIP.Exec(bucket, ipID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if len(batch.dailyIPs) > 0 {
+		days := make([]string, 0, len(batch.dailyIPs))
+		for day := range batch.dailyIPs {
+			days = append(days, day)
+		}
+		sort.Strings(days)
+		for _, day := range days {
+			ips := batch.dailyIPs[day]
+			if len(ips) == 0 {
+				continue
+			}
+			ipIDs := make([]int64, 0, len(ips))
+			for ipID := range ips {
+				ipIDs = append(ipIDs, ipID)
+			}
+			sort.Slice(ipIDs, func(i, j int) bool { return ipIDs[i] < ipIDs[j] })
+			for _, ipID := range ipIDs {
+				if _, err := aggs.insertDailyIP.Exec(day, ipID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+
+	// 旧实现（保留注释，便于回溯）：
+	/*
 	for bucket, counts := range batch.hourly {
 		if counts == nil {
 			continue
@@ -1428,6 +1644,7 @@ func applyAggUpdates(aggs *aggStatements, batch *aggBatch) error {
 	}
 
 	return nil
+	*/
 }
 
 func getOrCreateDimID(

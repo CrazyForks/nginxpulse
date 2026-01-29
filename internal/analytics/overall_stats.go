@@ -413,7 +413,7 @@ func collectSessionMetricsFromLogs(
         JOIN "%s_dim_url" u ON u.id = l.url_id
         WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?
         ORDER BY l.ip_id, l.ua_id, l.timestamp`,
-		websiteID, websiteID, websiteID))
+		websiteID, websiteID))
 
 	rows, err := repo.GetDB().Query(query, startTime.Unix(), endTime.Unix())
 	if err != nil {
