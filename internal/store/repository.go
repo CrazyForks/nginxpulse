@@ -942,21 +942,72 @@ func (r *Repository) updateIPGeoLocationsForWebsite(
 	locations map[string]IPGeoCacheEntry,
 	pendingLabel string,
 ) error {
+	const (
+		maxAttempts = 5
+		baseDelay   = 50 * time.Millisecond
+		maxDelay    = 2 * time.Second
+	)
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := r.updateIPGeoLocationsForWebsiteOnce(websiteID, locations, pendingLabel)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		// 仅对 PostgreSQL deadlock (SQLSTATE 40P01) 重试
+		if !isSQLState(err, "40P01") || attempt == maxAttempts {
+			return err
+		}
+
+		// 指数退避 + jitter
+		delay := baseDelay * time.Duration(1<<(attempt-1))
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+		jitter := time.Duration(rnd.Int63n(int64(baseDelay))) // [0, baseDelay)
+
+		logrus.WithFields(logrus.Fields{
+			"website_id": websiteID,
+			"attempt":    attempt,
+			"sleep":      (delay + jitter).String(),
+		}).WithError(err).Warn("检测到数据库死锁(40P01)，准备重试 IP 归属地回填")
+
+		time.Sleep(delay + jitter)
+	}
+	return lastErr
+}
+
+func (r *Repository) updateIPGeoLocationsForWebsiteOnce(
+	websiteID string,
+	locations map[string]IPGeoCacheEntry,
+	pendingLabel string,
+) (err error) {
 	logTable := fmt.Sprintf("%s_nginx_logs", websiteID)
 	exists, err := r.tableExists(logTable)
 	if err != nil || !exists {
 		return err
 	}
 
-	ips := make([]string, 0, len(locations))
-	for ip := range locations {
-		if strings.TrimSpace(ip) != "" {
-			ips = append(ips, ip)
+	normalized := make(map[string]IPGeoCacheEntry, len(locations))
+	for ip, entry := range locations {
+		ip = strings.TrimSpace(ip)
+		if ip == "" {
+			continue
 		}
+		normalized[ip] = entry
+	}
+	ips := make([]string, 0, len(normalized))
+	for ip := range normalized {
+		ips = append(ips, ip)
 	}
 	if len(ips) == 0 {
 		return nil
 	}
+	// 固定顺序，降低并发回填时的锁顺序差异
+	sort.Strings(ips)
 
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -964,7 +1015,7 @@ func (r *Repository) updateIPGeoLocationsForWebsite(
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
 
@@ -1022,8 +1073,12 @@ func (r *Repository) updateIPGeoLocationsForWebsite(
 		defer updateSessionsStmt.Close()
 	}
 
-	for ip, ipID := range ipIDs {
-		entry, ok := locations[ip]
+	for _, ip := range ips {
+		ipID, ok := ipIDs[ip]
+		if !ok {
+			continue
+		}
+		entry, ok := normalized[ip]
 		if !ok {
 			continue
 		}
@@ -2420,6 +2475,11 @@ func createSessionTables(execer sqlExecer, websiteID string) error {
 		),
 		fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS idx_%s_sessions_key ON "%s_sessions"(ip_id, ua_id, end_ts)`,
+			websiteID, websiteID,
+		),
+		// 支持 IP 归属地回填：UPDATE ... WHERE ip_id = ? AND location_id = ?
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_sessions_ip_loc ON "%s_sessions"(ip_id, location_id)`,
 			websiteID, websiteID,
 		),
 		fmt.Sprintf(
