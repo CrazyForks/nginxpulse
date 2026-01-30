@@ -41,3 +41,4 @@ export const TABBAR_SHADOW_ALPHA = 0.18;
 export const TABBAR_SHADOW_ALPHA_DARK = 0.55;
 export const TABBAR_INDICATOR_INSET = 6;
 export const TABBAR_INDICATOR_RADIUS = 22;
+export const MOBILE_TABBAR_BOTTOM = false;

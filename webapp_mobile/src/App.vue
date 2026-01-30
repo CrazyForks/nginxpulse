@@ -1,12 +1,23 @@
 <template>
-  <div class="mobile-shell">
+  <div class="mobile-shell" :class="{ 'nav-top-mode': !tabbarAtBottom }">
     <van-nav-bar
       fixed
       placeholder
       safe-area-inset-top
-      :title="pageTitle"
       class="mobile-nav"
     >
+      <template #title>
+        <button
+          v-if="!tabbarAtBottom"
+          type="button"
+          class="nav-title-trigger"
+          @click="toggleTopMenu"
+        >
+          <span>{{ pageTitle }}</span>
+          <van-icon name="arrow-down" class="nav-title-icon" :class="{ open: topMenuVisible }" />
+        </button>
+        <span v-else class="nav-title-text">{{ pageTitle }}</span>
+      </template>
       <template #left>
         <div class="mobile-brand">
           <img src="/brand-mark.svg" alt="NginxPulse" class="brand-logo" />
@@ -65,7 +76,14 @@
       <RouterView v-else :key="`${route.fullPath}-${currentLocale}-${accessKeyReloadToken}`" />
     </main>
 
-    <van-tabbar v-if="!setupRequired" ref="tabbarRef" route fixed safe-area-inset-bottom class="mobile-tabbar">
+    <van-tabbar
+      v-if="!setupRequired && tabbarAtBottom"
+      ref="tabbarRef"
+      route
+      fixed
+      safe-area-inset-bottom
+      class="mobile-tabbar"
+    >
       <van-tabbar-item to="/" class="tabbar-item">
         <template #icon="{ active }">
           <svg class="tab-icon" :class="{ active }" viewBox="0 0 24 24" aria-hidden="true">
@@ -103,6 +121,33 @@
         {{ t('app.menu.logs') }}
       </van-tabbar-item>
     </van-tabbar>
+
+    <Teleport to="body">
+      <van-overlay
+        :show="topMenuVisible"
+        class="top-menu-overlay"
+        @click="closeTopMenu"
+      />
+      <transition name="top-menu-slide">
+        <div v-show="topMenuVisible" class="top-menu-panel">
+          <button type="button" class="top-menu-close" @click="closeTopMenu">
+            <van-icon name="cross" />
+          </button>
+          <nav class="top-menu-list">
+            <RouterLink
+              v-for="item in navMenuItems"
+              :key="item.name"
+              :to="item.to"
+              class="top-menu-item"
+              :class="{ active: item.name === route.name }"
+              @click="closeTopMenu"
+            >
+              {{ item.label }}
+            </RouterLink>
+          </nav>
+        </div>
+      </transition>
+    </Teleport>
 
     <van-popup
       v-model:show="accessKeyRequired"
@@ -196,6 +241,7 @@ import {
   TABBAR_RADIUS,
   TABBAR_SHADOW_ALPHA,
   TABBAR_SHADOW_ALPHA_DARK,
+  MOBILE_TABBAR_BOTTOM,
 } from '@mobile/constants/ui';
 
 const route = useRoute();
@@ -219,6 +265,8 @@ const accessKeyErrorText = ref('');
 const accessKeyReloadToken = ref(0);
 const languageSheetVisible = ref(false);
 const tabbarRef = ref<any>(null);
+const topMenuVisible = ref(false);
+const tabbarAtBottom = MOBILE_TABBAR_BOTTOM;
 
 const languageOptions = computed(() => {
   const _locale = locale.value;
@@ -265,6 +313,13 @@ const pageTitle = computed(() => {
   }
 });
 
+const navMenuItems = computed(() => [
+  { name: 'overview', label: t('app.menu.overview'), to: '/' },
+  { name: 'daily', label: t('app.menu.daily'), to: '/daily' },
+  { name: 'realtime', label: t('app.menu.realtime'), to: '/realtime' },
+  { name: 'logs', label: t('app.menu.logs'), to: '/logs' },
+]);
+
 const activeTabIndex = computed(() => {
   switch (route.name) {
     case 'daily':
@@ -280,6 +335,9 @@ const activeTabIndex = computed(() => {
 });
 
 const updateTabIndicator = () => {
+  if (!tabbarAtBottom) {
+    return;
+  }
   const el = tabbarRef.value?.$el ?? tabbarRef.value;
   if (!el || setupRequired.value) {
     return;
@@ -380,8 +438,23 @@ watch([activeTabIndex, setupRequired], () => {
   nextTick(updateTabIndicator);
 });
 
+const closeTopMenu = () => {
+  topMenuVisible.value = false;
+};
+
+const toggleTopMenu = () => {
+  if (setupRequired.value) {
+    return;
+  }
+  topMenuVisible.value = !topMenuVisible.value;
+};
+
 watch(locale, () => {
   nextTick(updateTabIndicator);
+});
+
+watch(route, () => {
+  topMenuVisible.value = false;
 });
 
 provide('setParsingActive', (value: boolean) => {
