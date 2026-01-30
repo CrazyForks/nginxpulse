@@ -15,7 +15,7 @@
           <span class="filter-value">{{ currentWebsiteLabel }}</span>
           <van-icon name="arrow-down" />
         </button>
-        <button type="button" class="filter-trigger" @click="dateSheetVisible = true">
+        <button type="button" class="filter-trigger filter-trigger--date" @click="calendarVisible = true">
           <span class="filter-value">{{ currentDateLabel }}</span>
           <van-icon name="arrow-down" />
         </button>
@@ -98,6 +98,8 @@
 
     <van-calendar
       v-model:show="calendarVisible"
+      teleport="body"
+      :lazy-render="false"
       :min-date="minDate"
       :max-date="maxDate"
       @confirm="onConfirmDate"
@@ -112,20 +114,11 @@
       close-on-click-action
       @select="onSelectWebsite"
     />
-    <van-action-sheet
-      v-model:show="dateSheetVisible"
-      :duration="ACTION_SHEET_DURATION"
-      teleport="body"
-      :actions="dateActions"
-      :cancel-text="t('common.cancel')"
-      close-on-click-action
-      @select="onSelectDateOption"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { fetchOverallStats, fetchTimeSeriesStats, fetchWebsites } from '@/api';
 import type { TimeSeriesStats, WebsiteInfo } from '@/api/types';
@@ -137,12 +130,9 @@ const { t, n } = useI18n({ useScope: 'global' });
 const websites = ref<WebsiteInfo[]>([]);
 const websitesLoading = ref(false);
 const websiteSheetVisible = ref(false);
-const dateSheetVisible = ref(false);
 const currentWebsiteId = ref('');
 const currentDate = ref(getUserPreference('dailyReportDate', '') || formatDate(new Date()));
-const dateOption = ref('today');
 const calendarVisible = ref(false);
-const isSyncingDateOption = ref(false);
 const loading = ref(false);
 const overall = ref<Record<string, any> | null>(null);
 const timeSeries = ref<TimeSeriesStats | null>(null);
@@ -165,16 +155,6 @@ const yesterdayLabel = computed(() => {
   return formatDate(date);
 });
 
-const dateOptions = computed(() => [
-  { text: t('common.today'), value: 'today' },
-  { text: t('common.yesterday'), value: 'yesterday' },
-  { text: currentDate.value, value: 'custom' },
-]);
-
-const dateActions = computed(() =>
-  dateOptions.value.map((option) => ({ name: option.text, value: option.value }))
-);
-
 const currentWebsiteLabel = computed(() => {
   if (!currentWebsiteId.value) {
     return t('common.selectWebsite');
@@ -183,10 +163,10 @@ const currentWebsiteLabel = computed(() => {
 });
 
 const currentDateLabel = computed(() => {
-  if (dateOption.value === 'today') {
+  if (currentDate.value === todayLabel.value) {
     return t('common.today');
   }
-  if (dateOption.value === 'yesterday') {
+  if (currentDate.value === yesterdayLabel.value) {
     return t('common.yesterday');
   }
   return currentDate.value;
@@ -255,19 +235,12 @@ function formatCount(value: number | string | undefined | null) {
 function onConfirmDate(date: Date | Date[]) {
   const picked = Array.isArray(date) ? date[0] : date;
   currentDate.value = formatDate(picked);
-  dateOption.value = 'custom';
   calendarVisible.value = false;
 }
 
 function onSelectWebsite(action: { value?: string }) {
   if (action?.value) {
     currentWebsiteId.value = action.value;
-  }
-}
-
-function onSelectDateOption(action: { value?: string }) {
-  if (action?.value) {
-    dateOption.value = action.value;
   }
 }
 
@@ -319,44 +292,24 @@ watch(currentWebsiteId, (value) => {
   refreshDaily();
 });
 
-watch(dateOption, (value) => {
-  if (value === 'today') {
-    currentDate.value = todayLabel.value;
-  } else if (value === 'yesterday') {
-    currentDate.value = yesterdayLabel.value;
-  } else if (value === 'custom') {
-    if (!isSyncingDateOption.value) {
-      calendarVisible.value = true;
-    }
-  }
-  isSyncingDateOption.value = false;
-});
-
 watch(currentDate, (value) => {
   if (value) {
     saveUserPreference('dailyReportDate', value);
   }
-  if (value === todayLabel.value && dateOption.value !== 'today') {
-    isSyncingDateOption.value = true;
-    dateOption.value = 'today';
-  } else if (value === yesterdayLabel.value && dateOption.value !== 'yesterday') {
-    isSyncingDateOption.value = true;
-    dateOption.value = 'yesterday';
-  } else if (value !== todayLabel.value && value !== yesterdayLabel.value && dateOption.value !== 'custom') {
-    isSyncingDateOption.value = true;
-    dateOption.value = 'custom';
-  }
   refreshDaily();
 });
 
+watch(calendarVisible, (value) => {
+  if (value) {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+    });
+  }
+});
+
 onMounted(() => {
-  isSyncingDateOption.value = true;
-  dateOption.value =
-    currentDate.value === todayLabel.value
-      ? 'today'
-      : currentDate.value === yesterdayLabel.value
-        ? 'yesterday'
-        : 'custom';
   loadWebsites();
 });
 </script>

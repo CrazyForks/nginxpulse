@@ -240,6 +240,40 @@ body.dark-mode .van-dropdown-menu__title--active {
   cursor: pointer;
 }
 
+.filter-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filter-prefix {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(29, 107, 255, 0.1);
+  color: var(--mobile-primary);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.filter-prefix .van-icon {
+  font-size: 12px;
+}
+
+.filter-trigger--date {
+  background: rgba(29, 107, 255, 0.05);
+}
+
+.filter-trigger--date .filter-value {
+  font-weight: 700;
+  text-align: right;
+}
+
 .filter-trigger + .filter-trigger {
   border-left: 1px solid var(--mobile-border);
 }
@@ -264,6 +298,15 @@ body.dark-mode .filter-row {
 
 body.dark-mode .filter-trigger + .filter-trigger {
   border-left-color: rgba(148, 163, 184, 0.2);
+}
+
+body.dark-mode .filter-prefix {
+  background: rgba(90, 162, 255, 0.18);
+  color: #cfe0ff;
+}
+
+body.dark-mode .filter-trigger--date {
+  background: rgba(90, 162, 255, 0.08);
 }
 
 .van-cell-group--inset {
