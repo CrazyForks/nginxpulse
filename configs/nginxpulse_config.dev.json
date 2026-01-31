@@ -10,6 +10,11 @@
       "logPath": "var/log/nginx-pulse-demo/access_caddy.json",
       "logType": "caddy",
       "domains": ["localhost"]
+    },
+    {
+      "name": "神奇的程序员",
+      "logPath": "var/log/kaisir/access.log",
+      "domains": ["kaisir.cn","www.kaisir.cn"]
     }
   ],
   "system": {
