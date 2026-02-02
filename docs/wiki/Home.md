@@ -20,6 +20,7 @@ README 只保留“最快上手 + 关键告警”，细节统一放在 Wiki。
 - 版本 > 1.5.3 必须部署 PostgreSQL（SQLite 已弃用）。
 - 本项目使用系统时区解析日志，请确保运行环境时区正确。
 - 站点 ID 由 `websites[].name` 生成，改名会被视为新站点。
+- 多日志挂载、远端日志 `sources`、Push Agent 见《日志解析机制》。
 
 ## 常用路径
 - 配置文件: `configs/nginxpulse_config.json`
