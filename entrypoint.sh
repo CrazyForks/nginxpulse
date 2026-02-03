@@ -3,6 +3,7 @@ set -e
 
 DATA_DIR="${DATA_DIR:-/app/var/nginxpulse_data}"
 PGDATA="${PGDATA:-/app/var/pgdata}"
+CONFIG_DIR="${CONFIG_DIR:-/app/configs}"
 TMPDIR="${TMPDIR:-${DATA_DIR}/tmp}"
 POSTGRES_USER="${POSTGRES_USER:-nginxpulse}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-nginxpulse}"
@@ -41,7 +42,7 @@ if [ -n "$APP_UID" ]; then
 fi
 
 export TMPDIR
-mkdir -p "$DATA_DIR" "$PGDATA" "$TMPDIR"
+mkdir -p "$DATA_DIR" "$PGDATA" "$TMPDIR" "$CONFIG_DIR"
 
 is_mount_point() {
   awk -v target="$1" '$2==target {found=1} END {exit found?0:1}' /proc/mounts
@@ -66,6 +67,17 @@ fi
 
 if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$DATA_DIR/.write_test' && rm -f '$DATA_DIR/.write_test'" >/dev/null 2>&1; then
   echo "nginxpulse: $DATA_DIR is not writable; file logging may fail and will fall back to stdout" >&2
+fi
+
+# Ensure CONFIG_DIR is writable for saving configuration
+if [ "$(id -u)" = "0" ]; then
+  if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$CONFIG_DIR/.write_test' && rm -f '$CONFIG_DIR/.write_test'" >/dev/null 2>&1; then
+    chown -R "$APP_USER:$APP_GROUP" "$CONFIG_DIR" 2>/dev/null || true
+  fi
+fi
+
+if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$CONFIG_DIR/.write_test' && rm -f '$CONFIG_DIR/.write_test'" >/dev/null 2>&1; then
+  echo "nginxpulse: $CONFIG_DIR is not writable; configuration saving may fail" >&2
 fi
 
 if [ "$USE_EMBEDDED_PG" = "1" ]; then
