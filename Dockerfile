@@ -49,7 +49,7 @@ COPY docs/external_ips.txt /app/assets/external_ips.txt
 COPY --from=webapp-builder /app/webapp/dist /usr/share/nginx/html
 COPY --from=webapp-builder /app/webapp_mobile/dist /usr/share/nginx/html/m
 COPY configs/nginx_frontend.conf /etc/nginx/conf.d/default.conf
-RUN mkdir -p /app/var/nginxpulse_data /app/var/pgdata /app/assets \
+RUN mkdir -p /app/var/nginxpulse_data /app/var/pgdata /app/assets /app/configs \
     && chown -R nginxpulse:nginxpulse /app \
     && chmod +x /app/entrypoint.sh
 
