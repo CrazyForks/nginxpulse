@@ -10,6 +10,7 @@ services:
       - ./docker_local/logs:/share/logs
       - ./docker_local/nginxpulse_data:/app/var/nginxpulse_data
       - ./docker_local/pgdata:/app/var/pgdata
+      - ./docker_local/configs:/app/configs
       - /etc/localtime:/etc/localtime
     restart: unless-stopped
 
