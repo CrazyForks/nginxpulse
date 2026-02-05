@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/m/',
@@ -10,6 +11,30 @@ export default defineConfig({
         compilerOptions: {
           isCustomElement: (tag) => tag.startsWith('sl-'),
         },
+      },
+    }),
+    VitePWA({
+      strategies: 'generateSW',
+      registerType: 'autoUpdate',
+      injectRegister: false,
+      manifest: false,
+      includeAssets: [
+        'favicon.svg',
+        'brand-mark.svg',
+        'manifest.webmanifest',
+        'pwa/*.png',
+      ],
+      workbox: {
+        cleanupOutdatedCaches: true,
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/m\/api\//],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/api\//,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
     }),
   ],

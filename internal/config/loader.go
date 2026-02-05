@@ -24,6 +24,7 @@ const (
 	envAccessKeys        = "ACCESS_KEYS"
 	envLanguage          = "APP_LANGUAGE"
 	envWebBasePath       = "WEB_BASE_PATH"
+	envMobilePWAEnabled  = "MOBILE_PWA_ENABLED"
 	envIPGeoCacheLimit   = "IP_GEO_CACHE_LIMIT"
 	envIPGeoAPIURL       = "IP_GEO_API_URL"
 	envDBDriver          = "DB_DRIVER"
@@ -58,6 +59,7 @@ var (
 		DemoMode:         false,
 		AccessKeys:       nil,
 		Language:         "zh-CN",
+		MobilePWAEnabled: false,
 	}
 	defaultServer = ServerConfig{
 		Port: ":8089",
@@ -205,6 +207,13 @@ func applyEnvOverrides(cfg *Config) error {
 	}
 	if raw, _ := getEnvValue(envWebBasePath); raw != "" {
 		cfg.System.WebBasePath = strings.TrimSpace(raw)
+	}
+	if raw, key := getEnvValue(envMobilePWAEnabled); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("解析 %s 失败: %w", key, err)
+		}
+		cfg.System.MobilePWAEnabled = parsed
 	}
 
 	if raw, _ := getEnvValue(envServerPort); raw != "" {

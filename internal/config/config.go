@@ -103,6 +103,7 @@ type SystemConfig struct {
 	AccessKeys       []string `json:"accessKeys"`
 	Language         string   `json:"language"`
 	WebBasePath      string   `json:"webBasePath,omitempty"`
+	MobilePWAEnabled bool     `json:"mobilePwaEnabled"`
 }
 
 type ServerConfig struct {

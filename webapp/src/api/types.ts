@@ -59,6 +59,7 @@ export interface SystemConfig {
   accessKeys?: string[];
   language?: string;
   webBasePath?: string;
+  mobilePwaEnabled?: boolean;
 }
 
 export interface ServerConfig {

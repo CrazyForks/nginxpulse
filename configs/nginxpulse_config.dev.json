@@ -33,7 +33,8 @@
     "parseBatchSize": 100,
     "demoMode": false,
     "accessKeys": [],
-    "language": "zh-CN"
+    "language": "zh-CN",
+    "mobilePwaEnabled": false
   },
   "database": {
     "driver": "postgres",

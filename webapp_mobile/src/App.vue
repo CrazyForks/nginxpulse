@@ -124,6 +124,26 @@
       </van-tabbar-item>
     </van-tabbar>
 
+    <transition name="pwa-banner-fade">
+      <div v-if="pwaPromptVisible" class="pwa-banner" :class="{ 'with-tabbar': tabbarAtBottom }">
+        <div class="pwa-banner__icon">
+          <img src="/brand-mark.svg" alt="NginxPulse" />
+        </div>
+        <div class="pwa-banner__content">
+          <div class="pwa-banner__title">{{ pwaTitle }}</div>
+          <div class="pwa-banner__desc">{{ pwaDesc }}</div>
+        </div>
+        <div class="pwa-banner__actions">
+          <van-button size="small" type="primary" class="pwa-banner__primary" @click="handlePwaPrimary">
+            {{ pwaPrimaryLabel }}
+          </van-button>
+          <van-button size="small" plain class="pwa-banner__secondary" @click="dismissPwaPrompt">
+            {{ t('pwa.dismiss') }}
+          </van-button>
+        </div>
+      </div>
+    </transition>
+
     <Teleport to="body">
       <van-overlay
         :show="topMenuVisible"
@@ -179,6 +199,54 @@
         </van-button>
         <div v-if="accessKeyErrorMessage" class="access-error">{{ accessKeyErrorMessage }}</div>
       </div>
+    </van-popup>
+
+    <van-popup
+      v-model:show="pwaGuideVisible"
+      position="bottom"
+      round
+      class="pwa-guide"
+      :close-on-click-overlay="true"
+    >
+      <div class="pwa-guide__header">
+        <div class="pwa-guide__title">{{ t('pwa.iosGuideTitle') }}</div>
+        <button type="button" class="pwa-guide__close" @click="pwaGuideVisible = false">
+          <van-icon name="cross" />
+        </button>
+      </div>
+      <div class="pwa-guide__hint">{{ t('pwa.iosGuideHint') }}</div>
+      <div class="pwa-guide__steps">
+        <div class="pwa-guide__step">
+          <div class="pwa-guide__step-icon">
+            <i class="ri-share-line" aria-hidden="true"></i>
+          </div>
+          <div class="pwa-guide__step-body">
+            <div class="pwa-guide__step-title">{{ t('pwa.iosStepShareTitle') }}</div>
+            <div class="pwa-guide__step-desc">{{ t('pwa.iosStepShareDesc') }}</div>
+          </div>
+        </div>
+        <div class="pwa-guide__step">
+          <div class="pwa-guide__step-icon">
+            <i class="ri-add-box-line" aria-hidden="true"></i>
+          </div>
+          <div class="pwa-guide__step-body">
+            <div class="pwa-guide__step-title">{{ t('pwa.iosStepAddTitle') }}</div>
+            <div class="pwa-guide__step-desc">{{ t('pwa.iosStepAddDesc') }}</div>
+          </div>
+        </div>
+        <div class="pwa-guide__step">
+          <div class="pwa-guide__step-icon">
+            <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+          </div>
+          <div class="pwa-guide__step-body">
+            <div class="pwa-guide__step-title">{{ t('pwa.iosStepConfirmTitle') }}</div>
+            <div class="pwa-guide__step-desc">{{ t('pwa.iosStepConfirmDesc') }}</div>
+          </div>
+        </div>
+      </div>
+      <van-button block type="primary" class="pwa-guide__done" @click="dismissPwaPrompt">
+        {{ t('pwa.iosGuideDone') }}
+      </van-button>
     </van-popup>
 
     <van-action-sheet
@@ -251,6 +319,13 @@ const { t, locale } = useI18n({ useScope: 'global' });
 
 const ACCESS_KEY_STORAGE = 'nginxpulse_access_key';
 const ACCESS_KEY_EVENT = 'nginxpulse:access-key-required';
+const PWA_PROMPT_DISMISS_KEY = 'nginxpulse_pwa_prompt_dismissed_at';
+const PWA_PROMPT_THROTTLE_DAYS = 14;
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 const mainClass = computed(() => (route.meta.mainClass as string) || '');
 
@@ -269,7 +344,17 @@ const accessKeyReloadToken = ref(0);
 const languageSheetVisible = ref(false);
 const tabbarRef = ref<any>(null);
 const topMenuVisible = ref(false);
-const tabbarAtBottom = MOBILE_TABBAR_BOTTOM;
+const isPwaMode = ref(false);
+const pwaFeatureEnabled = ref(false);
+const tabbarAtBottom = computed(() => (isPwaMode.value ? true : MOBILE_TABBAR_BOTTOM));
+const pwaPromptVisible = ref(false);
+const pwaGuideVisible = ref(false);
+const pwaPromptMode = ref<'ios' | 'install' | 'none'>('none');
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let pwaPromptTimer: number | undefined;
+let displayModeQuery: MediaQueryList | null = null;
+const handleDisplayModeChange = () => refreshPwaMode();
 
 const languageOptions = computed(() => {
   const _locale = locale.value;
@@ -316,6 +401,14 @@ const pageTitle = computed(() => {
   }
 });
 
+const pwaTitle = computed(() =>
+  pwaPromptMode.value === 'ios' ? t('pwa.iosTitle') : t('pwa.installTitle')
+);
+const pwaDesc = computed(() => (pwaPromptMode.value === 'ios' ? t('pwa.iosDesc') : t('pwa.installDesc')));
+const pwaPrimaryLabel = computed(() =>
+  pwaPromptMode.value === 'ios' ? t('pwa.iosAction') : t('pwa.installAction')
+);
+
 const navMenuItems = computed(() => [
   { name: 'overview', label: t('app.menu.overview'), to: '/' },
   { name: 'daily', label: t('app.menu.daily'), to: '/daily' },
@@ -338,7 +431,7 @@ const activeTabIndex = computed(() => {
 });
 
 const updateTabIndicator = () => {
-  if (!tabbarAtBottom) {
+  if (!tabbarAtBottom.value) {
     return;
   }
   const el = tabbarRef.value?.$el ?? tabbarRef.value;
@@ -419,18 +512,159 @@ const applyUiTokens = () => {
   root.style.setProperty('--metric-tint-alpha-dark', String(METRIC_TINT_ALPHA_DARK));
 };
 
+const getStandaloneMode = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+
+const getPwaFeatureEnabled = () => {
+  const value = (window as unknown as Record<string, unknown>).__NGINXPULSE_MOBILE_PWA_ENABLED__;
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    return value.toLowerCase() === 'true';
+  }
+  return false;
+};
+
+const refreshPwaMode = () => {
+  pwaFeatureEnabled.value = getPwaFeatureEnabled();
+  isPwaMode.value = pwaFeatureEnabled.value && getStandaloneMode();
+  return isPwaMode.value;
+};
+
+refreshPwaMode();
+
+const isIOSDevice = () => {
+  const ua = navigator.userAgent.toLowerCase();
+  return /iphone|ipad|ipod/.test(ua) || (ua.includes('macintosh') && navigator.maxTouchPoints > 1);
+};
+
+const isSafariBrowser = () => {
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes('safari') && !ua.includes('crios') && !ua.includes('fxios') && !ua.includes('edgios');
+};
+
+const shouldShowPwaPrompt = () => {
+  if (!pwaFeatureEnabled.value) {
+    return false;
+  }
+  if (refreshPwaMode()) {
+    return false;
+  }
+  const raw = localStorage.getItem(PWA_PROMPT_DISMISS_KEY);
+  if (!raw) {
+    return true;
+  }
+  const ts = Number(raw);
+  if (!ts) {
+    return true;
+  }
+  const diffDays = (Date.now() - ts) / (1000 * 60 * 60 * 24);
+  return diffDays > PWA_PROMPT_THROTTLE_DAYS;
+};
+
+const markPwaPromptDismissed = () => {
+  localStorage.setItem(PWA_PROMPT_DISMISS_KEY, String(Date.now()));
+};
+
+const canShowPwaPrompt = () => !setupRequired.value && !accessKeyRequired.value && pwaFeatureEnabled.value;
+
+const evaluatePwaPrompt = () => {
+  if (!canShowPwaPrompt() || !shouldShowPwaPrompt()) {
+    return;
+  }
+  if (isIOSDevice() && isSafariBrowser()) {
+    pwaPromptMode.value = 'ios';
+    pwaPromptVisible.value = true;
+    return;
+  }
+  if (deferredPrompt) {
+    pwaPromptMode.value = 'install';
+    pwaPromptVisible.value = true;
+  }
+};
+
+const dismissPwaPrompt = () => {
+  pwaPromptVisible.value = false;
+  pwaGuideVisible.value = false;
+  markPwaPromptDismissed();
+};
+
+const handlePwaPrimary = async () => {
+  if (pwaPromptMode.value === 'ios') {
+    pwaGuideVisible.value = true;
+    return;
+  }
+  if (!deferredPrompt) {
+    dismissPwaPrompt();
+    return;
+  }
+  try {
+    await deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      dismissPwaPrompt();
+    }
+  } finally {
+    deferredPrompt = null;
+  }
+};
+
+const handleBeforeInstallPrompt = (event: Event) => {
+  event.preventDefault();
+  deferredPrompt = event as BeforeInstallPromptEvent;
+  evaluatePwaPrompt();
+};
+
+const handleAppInstalled = () => {
+  deferredPrompt = null;
+  pwaPromptVisible.value = false;
+  pwaPromptMode.value = 'none';
+  markPwaPromptDismissed();
+  refreshPwaMode();
+};
+
 onMounted(() => {
   applyUiTokens();
   applyTheme(isDark.value);
+  refreshPwaMode();
   refreshAppStatus();
   window.addEventListener(ACCESS_KEY_EVENT, handleAccessKeyEvent);
   window.addEventListener('resize', updateTabIndicator);
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.addEventListener('appinstalled', handleAppInstalled);
+  window.addEventListener('visibilitychange', refreshPwaMode);
+  if (window.matchMedia) {
+    displayModeQuery = window.matchMedia('(display-mode: standalone)');
+    if (displayModeQuery.addEventListener) {
+      displayModeQuery.addEventListener('change', handleDisplayModeChange);
+    } else if (displayModeQuery.addListener) {
+      displayModeQuery.addListener(handleDisplayModeChange);
+    }
+  }
   nextTick(updateTabIndicator);
+  pwaPromptTimer = window.setTimeout(() => {
+    evaluatePwaPrompt();
+  }, 1200);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener(ACCESS_KEY_EVENT, handleAccessKeyEvent);
   window.removeEventListener('resize', updateTabIndicator);
+  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.removeEventListener('appinstalled', handleAppInstalled);
+  window.removeEventListener('visibilitychange', refreshPwaMode);
+  if (displayModeQuery) {
+    if (displayModeQuery.removeEventListener) {
+      displayModeQuery.removeEventListener('change', handleDisplayModeChange);
+    } else if (displayModeQuery.removeListener) {
+      displayModeQuery.removeListener(handleDisplayModeChange);
+    }
+  }
+  if (pwaPromptTimer) {
+    window.clearTimeout(pwaPromptTimer);
+  }
 });
 
 watch(isDark, (value) => {
@@ -439,6 +673,27 @@ watch(isDark, (value) => {
 
 watch([activeTabIndex, setupRequired], () => {
   nextTick(updateTabIndicator);
+});
+
+watch(tabbarAtBottom, () => {
+  nextTick(updateTabIndicator);
+});
+
+watch([setupRequired, accessKeyRequired], () => {
+  if (!canShowPwaPrompt()) {
+    pwaPromptVisible.value = false;
+    return;
+  }
+  if (!pwaPromptVisible.value) {
+    evaluatePwaPrompt();
+  }
+});
+
+watch(pwaFeatureEnabled, (enabled) => {
+  if (!enabled) {
+    pwaPromptVisible.value = false;
+    pwaGuideVisible.value = false;
+  }
 });
 
 const closeTopMenu = () => {
@@ -649,5 +904,165 @@ function onSelectLanguage(action: { value?: string }) {
 .setup-empty-hint {
   font-size: 12px;
   color: var(--muted);
+}
+
+.pwa-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  box-shadow: var(--mobile-shadow-soft);
+  backdrop-filter: blur(16px);
+  z-index: 20;
+}
+
+.pwa-banner.with-tabbar {
+  bottom: calc(env(safe-area-inset-bottom) + 88px);
+}
+
+.pwa-banner__icon img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+}
+
+.pwa-banner__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pwa-banner__desc {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pwa-banner__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pwa-banner__primary,
+.pwa-banner__secondary {
+  padding: 0 10px;
+  height: 28px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.pwa-banner__secondary {
+  color: var(--muted);
+  border-color: rgba(226, 232, 240, 0.8);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pwa-banner-fade-enter-active,
+.pwa-banner-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pwa-banner-fade-enter-from,
+.pwa-banner-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.pwa-guide {
+  padding: 20px 18px 24px;
+  background: var(--panel);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+}
+
+.pwa-guide__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pwa-guide__title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pwa-guide__close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.pwa-guide__hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 14px;
+}
+
+.pwa-guide__steps {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pwa-guide__step {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.pwa-guide__step-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(29, 107, 255, 0.12);
+  color: var(--mobile-primary);
+  border: 1px solid rgba(29, 107, 255, 0.2);
+  font-size: 18px;
+}
+
+.pwa-guide__step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pwa-guide__step-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pwa-guide__done {
+  border-radius: 12px;
+}
+
+:global(body.dark-mode) .pwa-banner {
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: var(--mobile-shadow);
+}
+
+:global(body.dark-mode) .pwa-banner__secondary {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+:global(body.dark-mode) .pwa-guide__step-icon {
+  background: rgba(90, 162, 255, 0.18);
+  border-color: rgba(90, 162, 255, 0.25);
+  color: #5aa2ff;
 }
 </style>

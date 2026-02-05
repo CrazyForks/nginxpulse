@@ -84,6 +84,17 @@
             </div>
           </div>
           <div class="setup-scroll">
+            <div v-if="currentStepErrors.length" class="setup-toast" role="alert" aria-live="assertive">
+              <div class="setup-toast-title">
+                <i class="ri-error-warning-line" aria-hidden="true"></i>
+                <span>{{ t('setup.validationTitle') }}</span>
+                <span class="setup-toast-count">{{ currentStepErrors.length }}</span>
+              </div>
+              <div class="setup-toast-desc">{{ currentStepErrors[0].message }}</div>
+              <div v-if="currentStepErrors.length > 1" class="setup-toast-more">
+                +{{ currentStepErrors.length - 1 }}
+              </div>
+            </div>
             <transition name="setup-fade" mode="out-in">
               <div :key="currentStep" class="card setup-card" data-anim>
             <header class="setup-card-header">
@@ -93,15 +104,6 @@
               </div>
               <div class="setup-card-chip">{{ t('setup.stepLabel', { value: currentStep + 1, total: steps.length }) }}</div>
             </header>
-
-            <div v-if="currentStepErrors.length" class="setup-alert">
-              <div class="setup-alert-title">{{ t('setup.validationTitle') }}</div>
-              <ul class="setup-alert-list">
-                <li v-for="(item, idx) in currentStepErrors" :key="`${item.field}-${idx}`">
-                  {{ item.message }}
-                </li>
-              </ul>
-            </div>
 
             <div v-if="currentStep === 0" class="setup-section">
               <div
@@ -372,19 +374,44 @@
               <div class="setup-field">
                 <label class="setup-label">{{ t('setup.fields.accessKeys') }}</label>
                 <input v-model.trim="systemDraft.accessKeysText" class="setup-input" type="text" :placeholder="t('setup.placeholders.accessKeys')" />
-                <div class="setup-hint">{{ t('setup.hints.accessKeys') }}</div>
               </div>
-              <div class="setup-field setup-toggle">
-                <label class="setup-label">{{ t('setup.fields.demoMode') }}</label>
-                <button
-                  class="setup-switch"
-                  type="button"
-                  :class="{ active: systemDraft.demoMode }"
-                  :aria-pressed="systemDraft.demoMode"
-                  @click="systemDraft.demoMode = !systemDraft.demoMode"
-                >
-                  <span class="setup-switch-dot"></span>
-                </button>
+              <div class="setup-feature-grid">
+                <div class="setup-feature-card">
+                  <div class="setup-feature-icon">
+                    <i class="ri-rocket-2-line" aria-hidden="true"></i>
+                  </div>
+                  <div class="setup-feature-body">
+                    <div class="setup-feature-title">{{ t('setup.fields.demoMode') }}</div>
+                    <div class="setup-feature-desc">{{ t('setup.hints.demoMode') }}</div>
+                  </div>
+                  <button
+                    class="setup-switch"
+                    type="button"
+                    :class="{ active: systemDraft.demoMode }"
+                    :aria-pressed="systemDraft.demoMode"
+                    @click="systemDraft.demoMode = !systemDraft.demoMode"
+                  >
+                    <span class="setup-switch-dot"></span>
+                  </button>
+                </div>
+                <div class="setup-feature-card">
+                  <div class="setup-feature-icon">
+                    <i class="ri-smartphone-line" aria-hidden="true"></i>
+                  </div>
+                  <div class="setup-feature-body">
+                    <div class="setup-feature-title">{{ t('setup.fields.mobilePwaEnabled') }}</div>
+                    <div class="setup-feature-desc">{{ t('setup.hints.mobilePwaEnabled') }}</div>
+                  </div>
+                  <button
+                    class="setup-switch"
+                    type="button"
+                    :class="{ active: systemDraft.mobilePwaEnabled }"
+                    :aria-pressed="systemDraft.mobilePwaEnabled"
+                    @click="systemDraft.mobilePwaEnabled = !systemDraft.mobilePwaEnabled"
+                  >
+                    <span class="setup-switch-dot"></span>
+                  </button>
+                </div>
               </div>
 
               <button
@@ -702,6 +729,7 @@ const systemDraft = reactive({
   parseBatchSize: '100',
   ipGeoCacheLimit: '1000000',
   demoMode: false,
+  mobilePwaEnabled: false,
   accessKeysText: '',
   language: 'zh-CN',
   webBasePath: '',
@@ -1299,6 +1327,7 @@ function buildConfig(collectErrors = true): { config: ConfigPayload; errors: Fie
       parseBatchSize: parseOptionalInt(systemDraft.parseBatchSize, 'system.parseBatchSize', errors, false),
       ipGeoCacheLimit: parseOptionalInt(systemDraft.ipGeoCacheLimit, 'system.ipGeoCacheLimit', errors, false),
       demoMode: systemDraft.demoMode,
+      mobilePwaEnabled: systemDraft.mobilePwaEnabled,
       accessKeys: splitList(systemDraft.accessKeysText),
       language: systemDraft.language,
       webBasePath,
@@ -1498,6 +1527,7 @@ function hydrateDraft(config: ConfigPayload) {
   systemDraft.parseBatchSize = String(config.system?.parseBatchSize ?? 100);
   systemDraft.ipGeoCacheLimit = String(config.system?.ipGeoCacheLimit ?? 1000000);
   systemDraft.demoMode = Boolean(config.system?.demoMode);
+  systemDraft.mobilePwaEnabled = Boolean(config.system?.mobilePwaEnabled);
   systemDraft.accessKeysText = (config.system?.accessKeys || []).join(', ');
   systemDraft.language = config.system?.language || 'zh-CN';
   systemDraft.webBasePath = config.system?.webBasePath || '';

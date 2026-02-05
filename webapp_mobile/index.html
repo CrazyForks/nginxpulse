@@ -10,6 +10,132 @@
     <script src="/app-config.js"></script>
     <script>
       (function () {
+        var raw = window.__NGINXPULSE_MOBILE_PWA_ENABLED__;
+        var enabled =
+          raw === true || String(raw || '').toLowerCase() === 'true';
+        if (!enabled) {
+          return;
+        }
+        var head = document.head;
+        var addMeta = function (name, content) {
+          var meta = document.createElement('meta');
+          meta.setAttribute('name', name);
+          meta.setAttribute('content', content);
+          head.appendChild(meta);
+        };
+        var addLink = function (rel, href, sizes, media) {
+          var link = document.createElement('link');
+          link.setAttribute('rel', rel);
+          link.setAttribute('href', href);
+          if (sizes) link.setAttribute('sizes', sizes);
+          if (media) link.setAttribute('media', media);
+          head.appendChild(link);
+        };
+
+        addMeta('theme-color', '#1d6bff');
+        addMeta('application-name', 'NginxPulse');
+        addMeta('mobile-web-app-capable', 'yes');
+        addMeta('apple-mobile-web-app-capable', 'yes');
+        addMeta('apple-mobile-web-app-title', 'NginxPulse');
+        addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+        addLink('manifest', 'manifest.webmanifest');
+        addLink('apple-touch-icon', 'pwa/apple-touch-icon-180.png', '180x180');
+        addLink('apple-touch-icon', 'pwa/apple-touch-icon-167.png', '167x167');
+        addLink('apple-touch-icon', 'pwa/apple-touch-icon-152.png', '152x152');
+
+        [
+          {
+            href: 'pwa/splash-640x1136.png',
+            media:
+              '(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-750x1334.png',
+            media:
+              '(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-828x1792.png',
+            media:
+              '(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1125x2436.png',
+            media:
+              '(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1170x2532.png',
+            media:
+              '(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1179x2556.png',
+            media:
+              '(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1242x2688.png',
+            media:
+              '(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1284x2778.png',
+            media:
+              '(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1290x2796.png',
+            media:
+              '(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1536x2048.png',
+            media:
+              '(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1668x2224.png',
+            media:
+              '(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-1668x2388.png',
+            media:
+              '(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-2048x2732.png',
+            media:
+              '(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)',
+          },
+          {
+            href: 'pwa/splash-2048x1536.png',
+            media:
+              '(device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)',
+          },
+          {
+            href: 'pwa/splash-2224x1668.png',
+            media:
+              '(device-width: 1112px) and (device-height: 834px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)',
+          },
+          {
+            href: 'pwa/splash-2388x1668.png',
+            media:
+              '(device-width: 1194px) and (device-height: 834px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)',
+          },
+          {
+            href: 'pwa/splash-2732x2048.png',
+            media:
+              '(device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)',
+          },
+        ].forEach(function (item) {
+          addLink('apple-touch-startup-image', item.href, null, item.media);
+        });
+      })();
+    </script>
+    <script>
+      (function () {
         var location = window.location;
         var rawBase = String(window.__NGINXPULSE_BASE_PATH__ || '');
         var basePrefix = rawBase.trim();

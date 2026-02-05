@@ -10,7 +10,8 @@ import (
 
 func attachAppConfig(router *gin.Engine) {
 	router.GET("/app-config.js", func(c *gin.Context) {
-		base := config.NormalizeWebBasePath(config.ReadConfig().System.WebBasePath)
+		cfg := config.ReadConfig()
+		base := config.NormalizeWebBasePath(cfg.System.WebBasePath)
 		prefix := ""
 		if base != "" {
 			prefix = "/" + base
@@ -18,6 +19,11 @@ func attachAppConfig(router *gin.Engine) {
 		payload, _ := json.Marshal(prefix)
 		c.Header("Content-Type", "application/javascript; charset=utf-8")
 		c.Header("Cache-Control", "no-store")
-		c.String(http.StatusOK, "window.__NGINXPULSE_BASE_PATH__ = %s;", payload)
+		c.String(
+			http.StatusOK,
+			"window.__NGINXPULSE_BASE_PATH__ = %s;window.__NGINXPULSE_MOBILE_PWA_ENABLED__ = %t;",
+			payload,
+			cfg.System.MobilePWAEnabled,
+		)
 	})
 }

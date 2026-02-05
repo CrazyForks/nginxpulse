@@ -15,7 +15,8 @@
     "ipGeoApiUrl": "http://ip-api.com/batch",
     "demoMode": false,
     "accessKeys": [],
-    "language": "zh-CN"
+    "language": "zh-CN",
+    "mobilePwaEnabled": false
   },
   "database": {
     "driver": "postgres",
