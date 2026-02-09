@@ -43,6 +43,13 @@ func NewrefererStatsManager(userRepoPtr *store.Repository) *ClientStatsManager {
 	}
 }
 
+func NewRefererIPStatsManager(userRepoPtr *store.Repository) *ClientStatsManager {
+	return &ClientStatsManager{
+		repo:      userRepoPtr,
+		statsType: "referer_ip",
+	}
+}
+
 func NewBrowserStatsManager(userRepoPtr *store.Repository) *ClientStatsManager {
 	return &ClientStatsManager{
 		repo:      userRepoPtr,
@@ -141,6 +148,18 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		groupExpr = "u.url"
 	case "referer":
 		joinClause = fmt.Sprintf(`JOIN "%s_dim_referer" r ON r.id = l.referer_id`, query.WebsiteID)
+	case "referer_ip":
+		joinClause = fmt.Sprintf(
+			`JOIN "%s_dim_referer" r ON r.id = l.referer_id JOIN "%s_dim_ip" ip ON ip.id = l.ip_id`,
+			query.WebsiteID,
+			query.WebsiteID,
+		)
+		selectExpr = "ip.ip"
+		groupExpr = "ip.ip"
+		sourceKind, _ := query.ExtraParam["sourceKind"].(string)
+		if sourceCondition := buildRefererSourceCondition(sourceKind, "r.referer"); sourceCondition != "" {
+			extraCondition += " AND " + sourceCondition
+		}
 	case "user_browser":
 		joinClause = fmt.Sprintf(`JOIN "%s_dim_ua" ua ON ua.id = l.ua_id`, query.WebsiteID)
 		selectExpr = "ua.browser"
@@ -183,7 +202,7 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 	rows, err := s.repo.GetDB().Query(dbQueryStr, startTime.Unix(), endTime.Unix(), limit)
 	if err != nil {
-		return result, fmt.Errorf("查询URL统计失败: %v", err)
+		return result, fmt.Errorf("查询客户端统计失败: %v", err)
 	}
 	defer rows.Close()
 
@@ -194,7 +213,7 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		var url string
 		var pv, uv int
 		if err := rows.Scan(&url, &pv, &uv); err != nil {
-			return result, fmt.Errorf("解析URL统计结果失败: %v", err)
+			return result, fmt.Errorf("解析客户端统计结果失败: %v", err)
 		}
 		result.Key = append(result.Key, url)
 		result.PV = append(result.PV, pv)
@@ -204,7 +223,7 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		return result, fmt.Errorf("遍历URL统计结果失败: %v", err)
+		return result, fmt.Errorf("遍历客户端统计结果失败: %v", err)
 	}
 
 	if totalPV > 0 && totalUV > 0 {
@@ -257,4 +276,47 @@ func normalizeDomain(raw string) string {
 	raw = strings.TrimPrefix(raw, "//")
 	raw = strings.TrimSuffix(raw, "/")
 	return raw
+}
+
+func buildRefererSourceCondition(sourceKind string, refererColumn string) string {
+	directCondition := fmt.Sprintf("(%s = '-' OR %s = '')", refererColumn, refererColumn)
+	searchCondition := buildSearchEngineRefererCondition(refererColumn)
+
+	switch sourceKind {
+	case "search":
+		return searchCondition
+	case "direct":
+		return directCondition
+	case "external":
+		if searchCondition == "" {
+			return fmt.Sprintf("NOT %s", directCondition)
+		}
+		return fmt.Sprintf("(NOT %s AND NOT %s)", directCondition, searchCondition)
+	default:
+		return ""
+	}
+}
+
+func buildSearchEngineRefererCondition(refererColumn string) string {
+	patterns := []string{
+		"baidu.",
+		"google.",
+		"bing.",
+		"sogou.",
+		"360.",
+		"so.com",
+		"yahoo.",
+		"duckduckgo.",
+		"yandex.",
+	}
+
+	conditions := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		safePattern := strings.ReplaceAll(strings.ToLower(pattern), "'", "''")
+		conditions = append(conditions, fmt.Sprintf("LOWER(%s) LIKE '%%%s%%'", refererColumn, safePattern))
+	}
+	if len(conditions) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("(%s)", strings.Join(conditions, " OR "))
 }

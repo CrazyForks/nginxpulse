@@ -4,8 +4,8 @@
       <span class="title-chip">{{ t('daily.title') }}</span>
       <p class="title-sub">{{ t('daily.subtitle') }}</p>
     </div>
-    <div class="header-actions">
-      <HeaderToolbar>
+    <div class="header-actions header-actions-tech">
+      <HeaderToolbar class="header-toolbar-tech">
         <template #primary>
           <div class="site-select-pill">
             <span class="site-label">{{ t('common.website') }}</span>
@@ -189,6 +189,25 @@
         <div class="daily-tab-bar">
           <button class="daily-tab" :class="{ active: sourceTab === 'referer' }" @click="sourceTab = 'referer'">{{ t('daily.refererTop') }}</button>
           <button class="daily-tab" :class="{ active: sourceTab === 'search' }" @click="sourceTab = 'search'">{{ t('daily.searchEngine') }}</button>
+          <button class="daily-tab" :class="{ active: sourceTab === 'ip' }" @click="sourceTab = 'ip'">{{ t('daily.visitorIpTop') }}</button>
+        </div>
+        <div v-if="sourceTab === 'ip'" class="daily-source-inline">
+          <span class="daily-source-filter-label">{{ t('daily.ipSourceFilter') }}</span>
+          <button class="daily-source-link" :class="{ active: sourceIPTab === 'all' }" @click="sourceIPTab = 'all'">
+            {{ t('daily.ipSourceAll') }}
+          </button>
+          <span class="daily-source-divider">/</span>
+          <button class="daily-source-link" :class="{ active: sourceIPTab === 'search' }" @click="sourceIPTab = 'search'">
+            {{ t('daily.ipSourceSearch') }}
+          </button>
+          <span class="daily-source-divider">/</span>
+          <button class="daily-source-link" :class="{ active: sourceIPTab === 'direct' }" @click="sourceIPTab = 'direct'">
+            {{ t('daily.ipSourceDirect') }}
+          </button>
+          <span class="daily-source-divider">/</span>
+          <button class="daily-source-link" :class="{ active: sourceIPTab === 'external' }" @click="sourceIPTab = 'external'">
+            {{ t('daily.ipSourceExternal') }}
+          </button>
         </div>
         <div class="table-wrapper">
           <table class="ranking-table" v-show="sourceTab === 'referer'">
@@ -233,8 +252,44 @@
               </tr>
             </tbody>
           </table>
+          <table class="ranking-table" v-show="sourceTab === 'ip'">
+            <thead>
+              <tr>
+                <th>{{ sourceIPTableTitle }}</th>
+                <th>{{ t('daily.ipCount') }}</th>
+                <th>{{ t('daily.ipDelta') }}</th>
+                <th>{{ t('daily.changeRate') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!sourceIPRows.length">
+                <td colspan="4">{{ t('common.noData') }}</td>
+              </tr>
+              <tr v-else v-for="row in sourceIPRows" :key="row.label" class="daily-ip-row" @click="goToLogsByIP(row.label)">
+                <td class="daily-ip-cell">
+                  <span class="daily-ip-main">
+                    <span class="daily-ip-label" :title="row.label">{{ row.label }}</span>
+                    <i class="ri-information-line daily-ip-info" aria-hidden="true"></i>
+                  </span>
+                  <div class="daily-ip-popover" role="tooltip">
+                    <div class="daily-ip-popover-line">
+                      <span>{{ t('daily.ipSourceShare') }}</span>
+                      <strong>{{ row.sourceShareText }}</strong>
+                    </div>
+                    <div class="daily-ip-popover-line">
+                      <span>{{ t('daily.ipRegion') }}</span>
+                      <strong>{{ row.regionText }}</strong>
+                    </div>
+                  </div>
+                </td>
+                <td>{{ row.valueText }}</td>
+                <td :class="row.deltaClass">{{ row.deltaText }}</td>
+                <td :class="row.rateClass">{{ row.rateText }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="daily-summary-strip">{{ sourceSummary }}</div>
+        <div class="daily-summary-strip">{{ sourceSummaryText }}</div>
       </div>
     </div>
   </section>
@@ -400,19 +455,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import {
   fetchBrowserStats,
   fetchDeviceStats,
   fetchLocationStats,
   fetchOSStats,
   fetchOverallStats,
+  fetchRefererIPBatchStats,
   fetchRefererStats,
   fetchSessionSummary,
   fetchTimeSeriesStats,
   fetchUrlStats,
   fetchWebsites,
 } from '@/api';
-import type { SimpleSeriesStats, TimeSeriesStats, WebsiteInfo } from '@/api/types';
+import type { RefererIPBatchStats, RefererIPGroupStats, SimpleSeriesStats, TimeSeriesStats, WebsiteInfo } from '@/api/types';
 import {
   formatBrowserLabel,
   formatDeviceLabel,
@@ -434,6 +491,7 @@ const websites = ref<WebsiteInfo[]>([]);
 const websitesLoading = ref(true);
 const currentWebsiteId = ref('');
 const currentDate = ref(formatDate(new Date()));
+const router = useRouter();
 const { t, n, locale } = useI18n({ useScope: 'global' });
 const currentLocale = computed(() => normalizeLocale(locale.value));
 
@@ -454,7 +512,13 @@ const browserPrev = ref<SimpleSeriesStats | null>(null);
 const cityStats = ref<SimpleSeriesStats | null>(null);
 const cityPrev = ref<SimpleSeriesStats | null>(null);
 
-const sourceTab = ref<'referer' | 'search'>('referer');
+type SourceIPKind = 'all' | 'search' | 'direct' | 'external';
+
+const refererIPBatch = ref<RefererIPBatchStats | null>(null);
+const refererIPBatchPrev = ref<RefererIPBatchStats | null>(null);
+
+const sourceTab = ref<'referer' | 'search' | 'ip'>('referer');
+const sourceIPTab = ref<SourceIPKind>('all');
 
 const ipChartRef = ref<HTMLCanvasElement | null>(null);
 const sourceChartRef = ref<HTMLCanvasElement | null>(null);
@@ -525,7 +589,28 @@ const sourceCards = computed(() => {
 
 const refererRows = computed(() => buildRefererRows(refererStats.value, refererPrev.value, false));
 const searchRows = computed(() => buildRefererRows(refererStats.value, refererPrev.value, true));
+const sourceIPRows = computed(() =>
+  buildIPRows(
+    getSourceIPGroup(refererIPBatch.value, sourceIPTab.value),
+    getSourceIPGroup(refererIPBatchPrev.value, sourceIPTab.value)
+  )
+);
+const sourceIPScopeLabel = computed(() => {
+  if (sourceIPTab.value === 'search') {
+    return t('daily.ipSourceSearch');
+  }
+  if (sourceIPTab.value === 'direct') {
+    return t('daily.ipSourceDirect');
+  }
+  if (sourceIPTab.value === 'external') {
+    return t('daily.ipSourceExternal');
+  }
+  return t('daily.ipSourceAll');
+});
+const sourceIPTableTitle = computed(() => `${sourceIPScopeLabel.value} · ${t('daily.visitorIp')}`);
 const sourceSummary = computed(() => buildSourceSummary(refererStats.value, refererPrev.value));
+const sourceIPSummary = computed(() => buildSourceIPSummary(sourceIPRows.value, sourceIPScopeLabel.value));
+const sourceSummaryText = computed(() => (sourceTab.value === 'ip' ? sourceIPSummary.value : sourceSummary.value));
 const contentRows = computed(() => buildContentRows(urlStats.value, urlPrev.value));
 const visitorRows = computed(() => buildVisitorRows(overall.value, sessionSummary.value));
 const deviceCards = computed(() => buildDeviceCards(deviceStats.value, osStats.value));
@@ -626,6 +711,8 @@ async function loadDailyReport() {
       timeSeriesData,
       refererData,
       refererPrevData,
+      refererIPBatchData,
+      refererIPBatchPrevData,
       urlData,
       urlPrevData,
       deviceData,
@@ -643,6 +730,8 @@ async function loadDailyReport() {
       fetchTimeSeriesStats(currentWebsiteId.value, prevDate, 'hourly'),
       fetchRefererStats(currentWebsiteId.value, dateStr, 10),
       fetchRefererStats(currentWebsiteId.value, prevDate, 10),
+      fetchRefererIPBatchStats(currentWebsiteId.value, dateStr, 10),
+      fetchRefererIPBatchStats(currentWebsiteId.value, prevDate, 10),
       fetchUrlStats(currentWebsiteId.value, dateStr, 10),
       fetchUrlStats(currentWebsiteId.value, prevDate, 10),
       fetchDeviceStats(currentWebsiteId.value, dateStr, 10),
@@ -665,6 +754,8 @@ async function loadDailyReport() {
     timeSeries.value = timeSeriesData;
     refererStats.value = refererData;
     refererPrev.value = refererPrevData;
+    refererIPBatch.value = refererIPBatchData;
+    refererIPBatchPrev.value = refererIPBatchPrevData;
     urlStats.value = urlData;
     urlPrev.value = urlPrevData;
     deviceStats.value = deviceData;
@@ -842,6 +933,13 @@ function destroyCharts() {
   }
 }
 
+function getSourceIPGroup(stats: RefererIPBatchStats | null, kind: SourceIPKind): RefererIPGroupStats | null {
+  if (!stats) {
+    return null;
+  }
+  return stats[kind];
+}
+
 function buildMetric(current: number, prev: number) {
   const delta = current - prev;
   const rate = calcRate(current, prev);
@@ -907,6 +1005,34 @@ function buildRefererRows(stats: SimpleSeriesStats | null, prevStats: SimpleSeri
       rateText: formatRate(rate),
       rateClass: rateClass(rate),
     }
+  });
+}
+
+function buildIPRows(stats: RefererIPGroupStats | null, prevStats: RefererIPGroupStats | null) {
+  const prevMap = buildSeriesMap(prevStats?.key || [], prevStats?.uv || []);
+  const keys = stats?.key || [];
+  const uvs = stats?.uv || [];
+  const shares = stats?.share || [];
+  const domestics = stats?.domestic || [];
+  const globals = stats?.global || [];
+  const total = stats?.total_uv || 0;
+
+  return keys.map((key, idx) => {
+    const value = uvs[idx] || 0;
+    const prev = prevMap[key] || 0;
+    const delta = value - prev;
+    const rate = calcRate(value, prev);
+    const share = shares[idx] ?? (total > 0 ? value / total : 0);
+    return {
+      label: key,
+      valueText: formatNumber(value),
+      deltaText: formatSigned(delta),
+      deltaClass: deltaClass(delta),
+      rateText: formatRate(rate),
+      rateClass: rateClass(rate),
+      sourceShareText: formatPercent(share),
+      regionText: formatRegion(domestics[idx], globals[idx]),
+    };
   });
 }
 
@@ -1035,6 +1161,49 @@ function buildSourceSummary(stats: SimpleSeriesStats | null, prevStats: SimpleSe
   });
 }
 
+function buildSourceIPSummary(
+  rows: Array<{
+    label: string;
+    valueText: string;
+    deltaText: string;
+    rateText: string;
+    sourceShareText: string;
+    regionText: string;
+  }>,
+  scope: string
+) {
+  if (!rows.length) {
+    return t('daily.sourceEmpty');
+  }
+  const topRow = rows[0];
+  return t('daily.ipTopSummary', {
+    scope,
+    ip: topRow.label,
+    count: topRow.valueText,
+    share: topRow.sourceShareText,
+    region: topRow.regionText,
+    delta: topRow.deltaText,
+    rate: topRow.rateText,
+  });
+}
+
+function formatRegion(domestic?: string, global?: string) {
+  const domesticText = normalizeRegionValue(domestic);
+  const globalText = normalizeRegionValue(global);
+  if (globalText && domesticText && globalText !== domesticText) {
+    return `${globalText} · ${domesticText}`;
+  }
+  return domesticText || globalText || t('common.none');
+}
+
+function normalizeRegionValue(value?: string) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized === '-') {
+    return '';
+  }
+  return normalized;
+}
+
 function calcRate(current: number, prev: number) {
   if (prev === 0) {
     if (current === 0) {
@@ -1121,6 +1290,14 @@ function buildStatMap(stats: SimpleSeriesStats | null, field: 'uv' | 'pv' = 'uv'
   return map;
 }
 
+function buildSeriesMap(keys: string[], values: number[]) {
+  const map: Record<string, number> = {};
+  keys.forEach((key, idx) => {
+    map[key] = values[idx] || 0;
+  });
+  return map;
+}
+
 function getDeviceCount(stats: SimpleSeriesStats | null, category: 'desktop' | 'mobile' | 'other') {
   if (!stats || !stats.key) {
     return 0;
@@ -1196,6 +1373,37 @@ function getDateFromQuery() {
     return raw;
   }
   return '';
+}
+
+function goToLogsByIP(ip: string) {
+  const normalizedIP = String(ip || '').trim();
+  if (!normalizedIP || !currentWebsiteId.value) {
+    return;
+  }
+  const { start, end } = buildDayTimeRange(currentDate.value);
+  router.push({
+    name: 'logs',
+    query: {
+      id: currentWebsiteId.value,
+      ipFilter: normalizedIP,
+      timeStart: start,
+      timeEnd: end,
+    },
+  });
+}
+
+function buildDayTimeRange(dateStr: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) {
+    const fallback = formatDate(new Date());
+    return {
+      start: `${fallback} 00:00`,
+      end: `${fallback} 23:59`,
+    };
+  }
+  return {
+    start: `${dateStr} 00:00`,
+    end: `${dateStr} 23:59`,
+  };
 }
 </script>
 
@@ -1395,6 +1603,8 @@ function getDateFromQuery() {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: 16px;
+  position: relative;
+  z-index: 6;
 }
 
 .daily-donut-card {
@@ -1453,6 +1663,8 @@ function getDateFromQuery() {
 
 .daily-table-card {
   grid-column: span 8;
+  position: relative;
+  z-index: 8;
 }
 
 .daily-tab-bar {
@@ -1479,6 +1691,128 @@ function getDateFromQuery() {
 .daily-tab.active {
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
   color: white;
+}
+
+.daily-source-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  margin-left: 10px;
+}
+
+.daily-source-filter-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.daily-source-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.daily-source-link:hover {
+  color: var(--text);
+}
+
+.daily-source-link.active {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.daily-source-divider {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.daily-ip-cell {
+  position: relative;
+  overflow: visible !important;
+}
+
+.daily-ip-row {
+  cursor: pointer;
+}
+
+.daily-ip-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.daily-ip-label {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  letter-spacing: 0.01em;
+}
+
+.daily-ip-info {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.daily-ip-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  min-width: 240px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(var(--primary-color-rgb), 0.22);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 255, 0.94));
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 80;
+}
+
+.daily-ip-popover-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.daily-ip-popover-line + .daily-ip-popover-line {
+  margin-top: 6px;
+}
+
+.daily-ip-popover-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.daily-ip-cell:hover .daily-ip-popover,
+.daily-ip-cell:focus-within .daily-ip-popover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+:global(body.dark-mode) .daily-ip-popover {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: linear-gradient(160deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.94));
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.5);
 }
 
 .daily-summary-strip {
@@ -1613,6 +1947,11 @@ function getDateFromQuery() {
 }
 
 @media (max-width: 768px) {
+  .daily-date-picker {
+    min-width: 0;
+    width: 100%;
+  }
+
   .daily-mini-card {
     grid-column: span 12;
   }

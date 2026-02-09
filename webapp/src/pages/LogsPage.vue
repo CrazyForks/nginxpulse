@@ -5,8 +5,8 @@
         <span class="title-chip">{{ t('logs.title') }}</span>
         <p class="title-sub">{{ t('logs.subtitle') }}</p>
       </div>
-      <div class="header-actions">
-        <HeaderToolbar>
+      <div class="header-actions header-actions-tech">
+        <HeaderToolbar class="header-toolbar-tech">
           <template #primary>
             <div class="site-select-pill">
               <span class="site-label">{{ t('common.website') }}</span>
@@ -62,6 +62,7 @@
                 :label="exportButtonLabel"
                 :loading="exportLoading"
                 :disabled="!currentWebsiteId || exportLoading"
+                :title="isDemoMode ? t('logs.exportBlocked') : undefined"
                 @click="handleExport"
               />
             </div>
@@ -429,7 +430,7 @@
     >
       <div class="reparse-dialog-body">
         <template v-if="reparseDialogMode === 'blocked'">
-          <p>{{ t('logs.reparseBlocked') }}</p>
+          <p>{{ t(reparseDialogBlockedMessageKey) }}</p>
         </template>
         <template v-else>
           <p>
@@ -574,6 +575,7 @@
                 text
                 severity="secondary"
                 :disabled="!canRetryExport(data)"
+                :title="isDemoMode ? t('logs.exportBlocked') : undefined"
                 :label="t('logs.exportRetry')"
                 @click="handleRetryHistory(data)"
               />
@@ -601,6 +603,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRoute } from 'vue-router';
 import Dialog from 'primevue/dialog';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -659,6 +662,8 @@ type LogRowClickEvent = {
 const websites = ref<WebsiteInfo[]>([]);
 const websitesLoading = ref(true);
 const currentWebsiteId = ref('');
+const route = useRoute();
+const routeWebsiteIdOverride = ref('');
 
 const searchInput = ref('');
 const searchFilter = ref('');
@@ -684,6 +689,9 @@ const reparseDialogVisible = ref(false);
 const reparseLoading = ref(false);
 const reparseError = ref('');
 const reparseDialogMode = ref<'confirm' | 'blocked'>('confirm');
+const reparseDialogBlockedMessageKey = ref<'logs.reparseBlocked' | 'logs.exportBlocked'>(
+  'logs.reparseBlocked'
+);
 const migrationDialogVisible = ref(false);
 const migrationLoading = ref(false);
 const migrationError = ref('');
@@ -891,6 +899,35 @@ const reparseDialogTitle = computed(() =>
   reparseDialogMode.value === 'blocked' ? t('demo.badge') : t('logs.reparseTitle')
 );
 
+function getRouteQueryValue(key: string) {
+  const raw = route.query[key];
+  if (Array.isArray(raw)) {
+    return String(raw[0] || '').trim();
+  }
+  return String(raw || '').trim();
+}
+
+function isDateTimeValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(value || '');
+}
+
+function getIPFilterFromSearch(value: string) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+  const ipv4Pattern =
+    /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+  if (ipv4Pattern.test(normalized)) {
+    return normalized;
+  }
+  const ipv6Pattern = /^[0-9a-fA-F:.]+$/;
+  if (normalized.includes(':') && ipv6Pattern.test(normalized)) {
+    return normalized;
+  }
+  return '';
+}
+
 function normalizeProgress(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return null;
@@ -948,6 +985,7 @@ function setStatusCodePreset(preset: string) {
 
 function buildExportParams() {
   const { statusCode, statusClass } = resolveStatusParams();
+  const ipFilter = getIPFilterFromSearch(searchFilter.value);
   const params: Record<string, unknown> = {
     id: currentWebsiteId.value,
     website_id: currentWebsiteId.value,
@@ -968,6 +1006,9 @@ function buildExportParams() {
   }
   if (excludeInternal.value) {
     params.excludeInternal = true;
+  }
+  if (ipFilter) {
+    params.ipFilter = ipFilter;
   }
   if (pageviewOnly.value) {
     params.pageviewOnly = true;
@@ -1144,6 +1185,10 @@ function applyDatePreset(preset: string) {
 
 async function handleExport() {
   if (!currentWebsiteId.value || exportLoading.value) {
+    return;
+  }
+  if (isDemoMode.value) {
+    openDemoBlockedDialog('logs.exportBlocked');
     return;
   }
   stopExportPolling();
@@ -1418,6 +1463,10 @@ async function handleRetryHistory(job: LogsExportJob) {
   if (!job?.id || exportLoading.value) {
     return;
   }
+  if (isDemoMode.value) {
+    openDemoBlockedDialog('logs.exportBlocked');
+    return;
+  }
   stopExportPolling();
   exportLoading.value = true;
   exportJobError.value = '';
@@ -1542,6 +1591,7 @@ const ipGeoIssueRows = computed<IPGeoIssueRow[]>(() => {
 
 onMounted(() => {
   initPreferences();
+  applyRouteOverrides();
   loadWebsites();
 });
 
@@ -1675,13 +1725,36 @@ function initPreferences() {
   }
 }
 
+function applyRouteOverrides() {
+  const websiteID = getRouteQueryValue('id');
+  if (websiteID) {
+    routeWebsiteIdOverride.value = websiteID;
+  }
+
+  const ipFilter = getRouteQueryValue('ipFilter');
+  if (ipFilter) {
+    searchInput.value = ipFilter;
+    searchFilter.value = ipFilter;
+  }
+
+  const start = getRouteQueryValue('timeStart');
+  const end = getRouteQueryValue('timeEnd');
+  if (isDateTimeValue(start) || isDateTimeValue(end)) {
+    timeStart.value = isDateTimeValue(start) ? start : '';
+    timeEnd.value = isDateTimeValue(end) ? end : '';
+    dateRangePreset.value = 'custom';
+  }
+}
+
 async function loadWebsites() {
   websitesLoading.value = true;
   try {
     const data = await fetchWebsites();
     websites.value = data || [];
     const saved = getUserPreference('selectedWebsite', '');
-    if (saved && websites.value.find((site) => site.id === saved)) {
+    if (routeWebsiteIdOverride.value && websites.value.find((site) => site.id === routeWebsiteIdOverride.value)) {
+      currentWebsiteId.value = routeWebsiteIdOverride.value;
+    } else if (saved && websites.value.find((site) => site.id === saved)) {
       currentWebsiteId.value = saved;
     } else if (websites.value.length > 0) {
       currentWebsiteId.value = websites.value[0].id;
@@ -1705,6 +1778,7 @@ async function loadLogs() {
   loading.value = true;
   try {
     const { statusCode: statusCodeParam, statusClass: statusClassParam } = resolveStatusParams();
+    const ipFilterParam = getIPFilterFromSearch(searchFilter.value) || undefined;
     const timeStartParam = timeStart.value || undefined;
     const timeEndParam = timeEnd.value || undefined;
     const result = await fetchLogs(
@@ -1718,7 +1792,7 @@ async function loadLogs() {
       statusClassParam,
       statusCodeParam,
       excludeInternal.value,
-      undefined,
+      ipFilterParam,
       timeStartParam,
       timeEndParam,
       undefined,
@@ -1789,6 +1863,7 @@ async function refreshParsingStatus() {
   progressPollInFlight = true;
   try {
     const { statusCode: statusCodeParam, statusClass: statusClassParam } = resolveStatusParams();
+    const ipFilterParam = getIPFilterFromSearch(searchFilter.value) || undefined;
     const timeStartParam = timeStart.value || undefined;
     const timeEndParam = timeEnd.value || undefined;
     const result = await fetchLogs(
@@ -1802,7 +1877,7 @@ async function refreshParsingStatus() {
       statusClassParam,
       statusCodeParam,
       excludeInternal.value,
-      undefined,
+      ipFilterParam,
       timeStartParam,
       timeEndParam,
       undefined,
@@ -1851,11 +1926,16 @@ function applySearch() {
 function openReparseDialog() {
   reparseError.value = '';
   if (isDemoMode.value) {
-    reparseDialogMode.value = 'blocked';
-    reparseDialogVisible.value = true;
+    openDemoBlockedDialog('logs.reparseBlocked');
     return;
   }
   reparseDialogMode.value = 'confirm';
+  reparseDialogVisible.value = true;
+}
+
+function openDemoBlockedDialog(messageKey: 'logs.reparseBlocked' | 'logs.exportBlocked') {
+  reparseDialogBlockedMessageKey.value = messageKey;
+  reparseDialogMode.value = 'blocked';
   reparseDialogVisible.value = true;
 }
 

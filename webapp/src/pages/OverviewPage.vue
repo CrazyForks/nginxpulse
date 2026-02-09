@@ -5,8 +5,8 @@
         <span class="title-chip">{{ t('overview.title') }}</span>
         <p class="title-sub">{{ t('overview.subtitle') }}</p>
       </div>
-      <div class="header-actions">
-        <HeaderToolbar>
+      <div class="header-actions header-actions-tech">
+        <HeaderToolbar class="header-toolbar-tech">
           <template #primary>
             <div class="traffic-pill">
               <span class="traffic-label">{{ t('common.traffic') }}</span>
@@ -129,7 +129,19 @@
             <div class="metric-value">{{ metricTiles.pv.current }}</div>
             <div class="metric-sub"><span class="metric-sub-label">{{ metricLabels.prev }}</span><span class="metric-sub-value">{{ metricTiles.pv.prev }}</span></div>
             <div class="metric-sub">
-              <span class="metric-sub-label">{{ metricLabels.forecast }}</span>
+              <span class="metric-sub-label with-hint">
+                {{ metricLabels.forecast }}
+                <span class="metric-hint">
+                  <button
+                    type="button"
+                    class="metric-hint-btn"
+                    :aria-label="forecastHintAria"
+                  >
+                    <i class="ri-information-line" aria-hidden="true"></i>
+                  </button>
+                  <span class="metric-hint-popover" role="tooltip">{{ forecastHintText }}</span>
+                </span>
+              </span>
               <span class="metric-sub-value trend" :class="metricTiles.pv.deltaClass">{{ metricTiles.pv.forecast }}</span>
               <span class="metric-delta-inline" :class="metricTiles.pv.deltaClass">{{ metricTiles.pv.deltaText }}</span>
             </div>
@@ -143,7 +155,19 @@
             <div class="metric-value">{{ metricTiles.uv.current }}</div>
             <div class="metric-sub"><span class="metric-sub-label">{{ metricLabels.prev }}</span><span class="metric-sub-value">{{ metricTiles.uv.prev }}</span></div>
             <div class="metric-sub">
-              <span class="metric-sub-label">{{ metricLabels.forecast }}</span>
+              <span class="metric-sub-label with-hint">
+                {{ metricLabels.forecast }}
+                <span class="metric-hint">
+                  <button
+                    type="button"
+                    class="metric-hint-btn"
+                    :aria-label="forecastHintAria"
+                  >
+                    <i class="ri-information-line" aria-hidden="true"></i>
+                  </button>
+                  <span class="metric-hint-popover" role="tooltip">{{ forecastHintText }}</span>
+                </span>
+              </span>
               <span class="metric-sub-value trend" :class="metricTiles.uv.deltaClass">{{ metricTiles.uv.forecast }}</span>
               <span class="metric-delta-inline" :class="metricTiles.uv.deltaClass">{{ metricTiles.uv.deltaText }}</span>
             </div>
@@ -157,7 +181,19 @@
             <div class="metric-value">{{ metricTiles.session.current }}</div>
             <div class="metric-sub"><span class="metric-sub-label">{{ metricLabels.prev }}</span><span class="metric-sub-value">{{ metricTiles.session.prev }}</span></div>
             <div class="metric-sub">
-              <span class="metric-sub-label">{{ metricLabels.forecast }}</span>
+              <span class="metric-sub-label with-hint">
+                {{ metricLabels.forecast }}
+                <span class="metric-hint">
+                  <button
+                    type="button"
+                    class="metric-hint-btn"
+                    :aria-label="forecastHintAria"
+                  >
+                    <i class="ri-information-line" aria-hidden="true"></i>
+                  </button>
+                  <span class="metric-hint-popover" role="tooltip">{{ forecastHintText }}</span>
+                </span>
+              </span>
               <span class="metric-sub-value trend" :class="metricTiles.session.deltaClass">{{ metricTiles.session.forecast }}</span>
               <span class="metric-delta-inline" :class="metricTiles.session.deltaClass">{{ metricTiles.session.deltaText }}</span>
             </div>
@@ -767,6 +803,33 @@ const liveVisitorText = computed(() => {
 });
 
 const metricLabels = computed(() => getMetricCompareLabels(dateRange.value));
+const forecastRateWeight = computed(() => getForecastRateWeight(dateRange.value));
+const FORECAST_EXAMPLE_PROGRESS = 0.4;
+const FORECAST_EXAMPLE_CURRENT = 4000;
+const FORECAST_EXAMPLE_PROGRESS_PROJECTED = Math.round(FORECAST_EXAMPLE_CURRENT / FORECAST_EXAMPLE_PROGRESS);
+const FORECAST_EXAMPLE_RATE_PROJECTED = 11200;
+const forecastExampleFinalProjected = computed(() =>
+  Math.round(
+    FORECAST_EXAMPLE_RATE_PROJECTED * forecastRateWeight.value
+      + FORECAST_EXAMPLE_PROGRESS_PROJECTED * (1 - forecastRateWeight.value)
+  )
+);
+const forecastHintText = computed(() =>
+  [
+    t('overview.forecastHint', {
+      rateWeight: n(forecastRateWeight.value, 'percent'),
+      progressWeight: n(1 - forecastRateWeight.value, 'percent'),
+    }),
+    t('overview.forecastHintExample', {
+      progress: n(FORECAST_EXAMPLE_PROGRESS, 'percent'),
+      current: n(FORECAST_EXAMPLE_CURRENT),
+      progressProjected: n(FORECAST_EXAMPLE_PROGRESS_PROJECTED),
+      rateProjected: n(FORECAST_EXAMPLE_RATE_PROJECTED),
+      finalProjected: n(forecastExampleFinalProjected.value),
+    }),
+  ].join('\n')
+);
+const forecastHintAria = computed(() => t('overview.forecastHintAria'));
 
 const statusMetrics = computed(() => {
   const hits = overall.value?.statusCodeHits;
@@ -2608,6 +2671,16 @@ function getMetricCompareLabels(range: string) {
         sameTime: t('overview.sameTimePrevious'),
       };
   }
+}
+
+function getForecastRateWeight(range: string) {
+  if (isSpecificDateValue(range) || range === 'today' || range === 'yesterday') {
+    return 0.7;
+  }
+  if (range === 'last7days' || range === 'week') {
+    return 0.5;
+  }
+  return 0.3;
 }
 
 function buildOptionList(items: string[] = [], formatLabel?: (value: string) => string) {

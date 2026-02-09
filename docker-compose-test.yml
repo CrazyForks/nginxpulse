@@ -1,10 +1,12 @@
 services:
   nginxpulse:
-    image: magiccoders/nginxpulse:v1.6.11-beta.7
+    image: nginxpulse:test-local
+    build:
+      context: .
     container_name: local_nginxpulse
     ports:
       - "9122:8088"
-      - "8089:8089"
+      - "19089:8089"
     volumes:
       - ./docker_local/pgdata:/app/var/pgdata
       - ./docker_local/logs:/share/logs

@@ -50,7 +50,7 @@ func buildRouter(statsFactory *analytics.StatsFactory, logParser *ingest.LogPars
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
-	router.Use(basePathMiddleware())
+	router.Use(basePathMiddleware(router))
 	router.Use(accessKeyMiddleware())
 
 	web.SetupRoutes(router, statsFactory, logParser)

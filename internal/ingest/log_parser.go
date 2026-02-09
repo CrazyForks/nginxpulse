@@ -27,20 +27,22 @@ import (
 )
 
 var (
-	defaultNginxLogRegex = `^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<url>[^"]+) HTTP/\d\.\d" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"`
-	defaultApacheLogRegex = `^(?P<ip>\S+) (?P<ident>\S+) (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"`
-	defaultTraefikLogRegex = `^(?P<ip>\S+) (?P<ident>\S+) (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)" (?P<req_count>\d+) "(?P<router>[^"]*)" "(?P<server_url>[^"]*)" (?P<duration_ms>[0-9.]+)ms`
-	defaultEnvoyLogRegex = `^\[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<response_flags>\S+) (?P<bytes_received>\d+) (?P<bytes>\d+) (?P<duration>\d+) (?P<upstream_time>\S+) "(?P<ip>[^"]*)" "(?P<ua>[^"]*)" "(?P<request_id>[^"]*)" "(?P<authority>[^"]*)" "(?P<upstream_host>[^"]*)"`
-	defaultHAProxyLogRegex = `^(?:\w{3}\s+\d+\s+\d+:\d+:\d+\s+\S+\s+\S+\[\d+\]:\s+)?(?P<ip>\S+):\d+\s+\[(?P<time>[^\]]+)\]\s+\S+\s+\S+\s+-?\d+/-?\d+/-?\d+/-?\d+/-?\d+\s+(?P<status>\d{3})\s+(?P<bytes>\d+|-)\s+\S+\s+\S+\s+\S+\s+-?\d+/-?\d+/-?\d+/-?\d+/-?\d+\s+-?\d+/-?\d+(?:\s+(?:\{[^\}]*\}|-)){0,2}\s+\"(?P<request>[^\"]*)\"`
+	defaultNginxLogRegex        = `^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<url>[^"]+) HTTP/\d\.\d" (?P<status>\d+) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"`
+	defaultApacheLogRegex       = `^(?P<ip>\S+) (?P<ident>\S+) (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"`
+	defaultTraefikLogRegex      = `^(?P<ip>\S+) (?P<ident>\S+) (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)" (?P<req_count>\d+) "(?P<router>[^"]*)" "(?P<server_url>[^"]*)" (?P<duration_ms>[0-9.]+)ms`
+	defaultEnvoyLogRegex        = `^\[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<response_flags>\S+) (?P<bytes_received>\d+) (?P<bytes>\d+) (?P<duration>\d+) (?P<upstream_time>\S+) "(?P<ip>[^"]*)" "(?P<ua>[^"]*)" "(?P<request_id>[^"]*)" "(?P<authority>[^"]*)" "(?P<upstream_host>[^"]*)"`
+	defaultHAProxyLogRegex      = `^(?:\w{3}\s+\d+\s+\d+:\d+:\d+\s+\S+\s+\S+\[\d+\]:\s+)?(?P<ip>\S+):\d+\s+\[(?P<time>[^\]]+)\]\s+\S+\s+\S+\s+-?\d+/-?\d+/-?\d+/-?\d+/-?\d+\s+(?P<status>\d{3})\s+(?P<bytes>\d+|-)\s+\S+\s+\S+\s+\S+\s+-?\d+/-?\d+/-?\d+/-?\d+/-?\d+\s+-?\d+/-?\d+(?:\s+(?:\{[^\}]*\}|-)){0,2}\s+\"(?P<request>[^\"]*)\"`
 	defaultNginxIngressLogRegex = `^(?P<ip>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<request>[^"]*)" (?P<status>\d{3}) (?P<bytes>\d+|-) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)" (?P<request_length>\d+) (?P<request_time>[0-9.]+) \[(?P<proxy_upstream_name>[^\]]*)\] \[(?P<proxy_alternative_upstream_name>[^\]]*)\] (?P<upstream_addr>[^ ]+(?:,\s*[^ ]+)*) (?P<upstream_response_length>[^ ]+(?:,\s*[^ ]+)*) (?P<upstream_response_time>[^ ]+(?:,\s*[^ ]+)*) (?P<upstream_status>[^ ]+(?:,\s*[^ ]+)*) (?P<req_id>\S+)`
-	defaultNPMLogRegex   = `^\[(?P<time>[^\]]+)\] - (?P<status>\d+) (?P<upstream_status>\d+) - (?P<method>\S+) (?P<scheme>\S+) (?P<host>\S+) "(?P<path>[^"]+)" \[Client (?P<ip>[^\]]+)\] \[Length (?P<bytes>\d+)\] \[Gzip (?P<gzip>[^\]]+)\] \[Sent-to (?P<upstream>[^\]]+)\] "(?P<ua>[^"]+)" "(?P<referer>[^"]*)"`
-	lastCleanupDate      = ""
-	parsingMu            sync.RWMutex
-	parsingMode          parseMode
+	defaultIISW3CLogRegex       = `^(?P<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(?P<method>\S+)\s+(?P<url>\S+)\s+(?P<query>\S+)\s+\S+\s+\S+\s+(?P<ip>\S+)\s+(?P<ua>\S+)\s+(?P<referer>\S+)\s+(?P<status>\d{3})(?:\s+\S+){3}\s*$`
+	defaultNPMLogRegex          = `^\[(?P<time>[^\]]+)\] - (?P<status>\d+) (?P<upstream_status>\d+) - (?P<method>\S+) (?P<scheme>\S+) (?P<host>\S+) "(?P<path>[^"]+)" \[Client (?P<ip>[^\]]+)\] \[Length (?P<bytes>\d+)\] \[Gzip (?P<gzip>[^\]]+)\] \[Sent-to (?P<upstream>[^\]]+)\] "(?P<ua>[^"]+)" "(?P<referer>[^"]*)"`
+	lastCleanupDate             = ""
+	parsingMu                   sync.RWMutex
+	parsingMode                 parseMode
 )
 
 const defaultNginxTimeLayout = "02/Jan/2006:15:04:05 -0700"
 const defaultHAProxyTimeLayout = "02/Jan/2006:15:04:05.000"
+const defaultIISTimeLayout = "2006-01-02 15:04:05"
 
 const (
 	parseTypeRegex     = "regex"
@@ -58,6 +60,7 @@ var (
 	timeAliases      = []string{"time", "time_local", "time_iso8601"}
 	methodAliases    = []string{"method", "request_method"}
 	urlAliases       = []string{"url", "request_uri", "uri", "path"}
+	queryAliases     = []string{"query", "args", "query_string", "cs_uri_query"}
 	statusAliases    = []string{"status"}
 	bytesAliases     = []string{"bytes", "body_bytes_sent", "bytes_sent"}
 	refererAliases   = []string{"referer", "http_referer"}
@@ -1617,6 +1620,12 @@ func newLogLineParser(website config.WebsiteConfig, sourceCfg *config.SourceConf
 			if strings.TrimSpace(timeLayout) == "" {
 				timeLayout = defaultHAProxyTimeLayout
 			}
+		case "iis", "iis-w3c", "w3c-iis":
+			pattern = defaultIISW3CLogRegex
+			source = "iis"
+			if strings.TrimSpace(timeLayout) == "" {
+				timeLayout = defaultIISTimeLayout
+			}
 		default:
 			return nil, fmt.Errorf("不支持的日志类型: %s", logType)
 		}
@@ -1873,6 +1882,14 @@ func (p *LogParser) parseRegexLogLine(parser *logLineParser, line string) (*stor
 			if urlValue == "" {
 				urlValue = parsedURL
 			}
+		}
+	}
+	queryValue := extractField(matches, parser.indexMap, queryAliases)
+	if urlValue != "" && queryValue != "" && queryValue != "-" && !strings.Contains(urlValue, "?") {
+		if strings.HasPrefix(queryValue, "?") {
+			urlValue += queryValue
+		} else {
+			urlValue += "?" + queryValue
 		}
 	}
 

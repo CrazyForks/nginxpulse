@@ -64,6 +64,8 @@ func (f *StatsFactory) registerDefaultManagers() {
 
 	f.managers["url"] = NewURLStatsManager(f.repo)
 	f.managers["referer"] = NewrefererStatsManager(f.repo)
+	f.managers["referer_ip"] = NewRefererIPStatsManager(f.repo)
+	f.managers["referer_ip_batch"] = NewRefererIPBatchStatsManager(f.repo)
 
 	f.managers["browser"] = NewBrowserStatsManager(f.repo)
 	f.managers["os"] = NewOsStatsManager(f.repo)
@@ -187,18 +189,20 @@ func (f *StatsFactory) BuildQueryFromRequest(
 
 	// 定义每种统计类型需要的参数
 	requiredParams := map[string]map[string]string{
-		"timeseries":      {"id": "string", "timeRange": "string", "viewType": "string"},
-		"overall":         {"id": "string", "timeRange": "string"},
-		"url":             {"id": "string", "timeRange": "string", "limit": "int"},
-		"referer":         {"id": "string", "timeRange": "string", "limit": "int"},
-		"browser":         {"id": "string", "timeRange": "string", "limit": "int"},
-		"os":              {"id": "string", "timeRange": "string", "limit": "int"},
-		"device":          {"id": "string", "timeRange": "string", "limit": "int"},
-		"location":        {"id": "string", "timeRange": "string", "limit": "int", "locationType": "string"},
-		"logs":            {"id": "string", "page": "int", "pageSize": "int", "sortField": "string", "sortOrder": "enum:asc,desc"},
-		"session":         {"id": "string", "page": "int", "pageSize": "int"},
-		"session_summary": {"id": "string", "timeRange": "string"},
-		"realtime":        {"id": "string"},
+		"timeseries":       {"id": "string", "timeRange": "string", "viewType": "string"},
+		"overall":          {"id": "string", "timeRange": "string"},
+		"url":              {"id": "string", "timeRange": "string", "limit": "int"},
+		"referer":          {"id": "string", "timeRange": "string", "limit": "int"},
+		"referer_ip":       {"id": "string", "timeRange": "string", "limit": "int"},
+		"referer_ip_batch": {"id": "string", "timeRange": "string", "limit": "int"},
+		"browser":          {"id": "string", "timeRange": "string", "limit": "int"},
+		"os":               {"id": "string", "timeRange": "string", "limit": "int"},
+		"device":           {"id": "string", "timeRange": "string", "limit": "int"},
+		"location":         {"id": "string", "timeRange": "string", "limit": "int", "locationType": "string"},
+		"logs":             {"id": "string", "page": "int", "pageSize": "int", "sortField": "string", "sortOrder": "enum:asc,desc"},
+		"session":          {"id": "string", "page": "int", "pageSize": "int"},
+		"session_summary":  {"id": "string", "timeRange": "string"},
+		"realtime":         {"id": "string"},
 	}
 
 	// 检查是否支持的统计类型
@@ -390,6 +394,20 @@ func (f *StatsFactory) BuildQueryFromRequest(
 				return query, fmt.Errorf("window 参数格式错误")
 			}
 			query.ExtraParam["window"] = value
+		}
+	}
+	if statsType == "referer_ip" {
+		if sourceKind, ok := params["sourceKind"]; ok && sourceKind != "" {
+			valid := map[string]bool{
+				"all":      true,
+				"search":   true,
+				"direct":   true,
+				"external": true,
+			}
+			if !valid[sourceKind] {
+				return query, fmt.Errorf("sourceKind 参数无效")
+			}
+			query.ExtraParam["sourceKind"] = sourceKind
 		}
 	}
 

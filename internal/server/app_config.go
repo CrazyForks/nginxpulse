@@ -9,7 +9,7 @@ import (
 )
 
 func attachAppConfig(router *gin.Engine) {
-	router.GET("/app-config.js", func(c *gin.Context) {
+	handler := func(c *gin.Context) {
 		cfg, err := config.ReadRawConfig()
 		if err != nil {
 			c.Header("Content-Type", "application/javascript; charset=utf-8")
@@ -30,5 +30,7 @@ func attachAppConfig(router *gin.Engine) {
 			"window.__NGINXPULSE_BASE_PATH__ = %s;",
 			payload,
 		)
-	})
+	}
+	router.GET("/app-config.js", handler)
+	router.GET("/m/app-config.js", handler)
 }

@@ -822,6 +822,7 @@ type LogTypeOption = {
 const baseLogTypeOptions: LogTypeOption[] = [
   { value: 'nginx', label: 'Nginx' },
   { value: 'apache', label: 'Apache httpd' },
+  { value: 'iis', label: 'IIS (W3C Extended)' },
   { value: 'haproxy', label: 'HAProxy' },
   { value: 'traefik', label: 'Traefik' },
   { value: 'envoy', label: 'Envoy' },

@@ -29,6 +29,30 @@
 - 归属地解析在后台批量回填，不阻塞主解析。
 - 如需更快：调大 `parseBatchSize`、提高机器 IO 或将日志按天切分。
 
+## IIS 默认规则（W3C Extended）
+NginxPulse 现已支持 `logType=iis`（别名：`iis-w3c`），默认按 IIS W3C 扩展日志的常见默认字段顺序解析：
+
+`date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) cs(Referer) sc-status sc-substatus sc-win32-status time-taken`
+
+注意点：
+- 日志中以 `#` 开头的元数据行（如 `#Software`、`#Version`、`#Fields`）会自动跳过。
+- URL 会优先取 `cs-uri-stem`，当 `cs-uri-query` 不是 `-` 时会自动拼接为 `path?query`。
+- IIS W3C 默认时间按 UTC 记录，默认时间格式为 `2006-01-02 15:04:05`。
+
+配置示例：
+```json
+{
+  "name": "iis-site",
+  "logPath": "/var/log/iis/u_ex*.log",
+  "logType": "iis"
+}
+```
+
+示例日志行：
+```text
+2026-02-08 10:05:34 10.0.0.10 GET /index.html a=1&b=2 443 - 203.0.113.8 Mozilla/5.0+(Windows+NT+10.0;+Win64;+x64) https://example.com/ 200 0 0 36
+```
+
 ## 日志清理
 - `system.logRetentionDays` 控制保留天数。
 - 清理任务在系统时间凌晨 2 点触发（按系统时区）。

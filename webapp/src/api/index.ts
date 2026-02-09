@@ -13,6 +13,7 @@ import type {
   LogsExportStatusResponse,
   LogsExportListResponse,
   IPGeoAPIFailureListResponse,
+  RefererIPBatchStats,
   SimpleSeriesStats,
   SystemNotificationListResponse,
   TimeSeriesStats,
@@ -159,6 +160,19 @@ export const fetchRefererStats = (
   timeRange: string,
   limit = 10
 ): Promise<SimpleSeriesStats> => fetchStats('referer', { id: websiteId, timeRange, limit });
+
+export const fetchRefererIPStats = (
+  websiteId: string,
+  timeRange: string,
+  sourceKind: 'all' | 'search' | 'direct' | 'external' = 'all',
+  limit = 10
+): Promise<SimpleSeriesStats> => fetchStats('referer_ip', { id: websiteId, timeRange, sourceKind, limit });
+
+export const fetchRefererIPBatchStats = (
+  websiteId: string,
+  timeRange: string,
+  limit = 10
+): Promise<RefererIPBatchStats> => fetchStats('referer_ip_batch', { id: websiteId, timeRange, limit });
 
 export const fetchBrowserStats = (
   websiteId: string,

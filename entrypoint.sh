@@ -204,9 +204,9 @@ extract_web_base_path() {
   if [ -n "${WEB_BASE_PATH:-}" ]; then
     raw="$WEB_BASE_PATH"
   elif [ -n "${CONFIG_JSON:-}" ]; then
-    raw="$(printf '%s' "$CONFIG_JSON" | tr '\n' ' ' | sed -n 's/.*\"webBasePath\"[[:space:]]*:[[:space:]]*\"\\([^\\"]*\\)\".*/\\1/p' | head -n 1)"
+    raw="$(printf '%s' "$CONFIG_JSON" | tr '\n' ' ' | sed -n 's/.*\"webBasePath\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p' | head -n 1)"
   elif [ -f "$CONFIG_DIR/nginxpulse_config.json" ]; then
-    raw="$(sed -n 's/.*\"webBasePath\"[[:space:]]*:[[:space:]]*\"\\([^\\"]*\\)\".*/\\1/p' "$CONFIG_DIR/nginxpulse_config.json" | head -n 1)"
+    raw="$(sed -n 's/.*\"webBasePath\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p' "$CONFIG_DIR/nginxpulse_config.json" | head -n 1)"
   fi
   normalize_web_base_path "$raw"
 }
@@ -218,6 +218,7 @@ write_app_config() {
     prefix="/$base_path"
   fi
   printf 'window.__NGINXPULSE_BASE_PATH__ = "%s";\n' "$prefix" > /usr/share/nginx/html/app-config.js
+  printf 'window.__NGINXPULSE_BASE_PATH__ = "%s";\n' "$prefix" > /usr/share/nginx/html/m/app-config.js
 }
 
 write_nginx_conf() {
@@ -279,11 +280,32 @@ server {
     try_files \$uri =404;
   }
 
+  location = /m/app-config.js {
+    add_header Cache-Control "no-store";
+    try_files \$uri =404;
+  }
+
   location = /favicon.svg {
     try_files \$uri =404;
   }
 
   location = /brand-mark.svg {
+    try_files \$uri =404;
+  }
+
+  location = /m/favicon.svg {
+    try_files \$uri =404;
+  }
+
+  location = /m/brand-mark.svg {
+    try_files \$uri =404;
+  }
+
+  location = /index.html {
+    try_files \$uri =404;
+  }
+
+  location = /m/index.html {
     try_files \$uri =404;
   }
 
@@ -312,14 +334,18 @@ server {
     proxy_set_header X-Forwarded-Proto \$scheme;
   }
 
+  location = /$base_path/api {
+    return 308 /$base_path/api/;
+  }
+
   location /$base_path/m/ {
     rewrite ^/$base_path/m/(.*)$ /m/\$1 break;
-    try_files \$uri \$uri/ /m/index.html;
+    try_files \$uri /m/index.html;
   }
 
   location /$base_path/ {
     rewrite ^/$base_path/(.*)$ /\$1 break;
-    try_files \$uri \$uri/ /index.html;
+    try_files \$uri /index.html;
   }
 
   location / {

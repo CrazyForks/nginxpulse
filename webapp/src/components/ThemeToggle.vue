@@ -1,7 +1,7 @@
 <template>
   <button class="theme-toggle" type="button" :title="t('theme.toggle')" :aria-pressed="isDark" @click="toggle">
-    <span class="light-icon">🌙</span>
-    <span class="dark-icon">☀️</span>
+    <i class="ri-moon-line light-icon" aria-hidden="true"></i>
+    <i class="ri-sun-line dark-icon" aria-hidden="true"></i>
   </button>
 </template>
 

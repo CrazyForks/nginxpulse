@@ -101,7 +101,7 @@ https://example.com/m/?tabbarBottom=false
   - 示例: `/var/log/nginx/access.log`
   - 示例: `/var/log/nginx/access_*.log`
 - `domains` (string[]): 站点域名列表。
-- `logType` (string): 日志类型，支持 `nginx`、`caddy`、`nginx-proxy-manager`（或 `npm`）、`apache`（或 `httpd`）、`haproxy`、`traefik`、`envoy`、`tengine`、`nginx-ingress`（或 `ingress-nginx`）、`traefik-ingress`、`haproxy-ingress`，默认 `nginx`。
+- `logType` (string): 日志类型，支持 `nginx`、`caddy`、`nginx-proxy-manager`（或 `npm`）、`apache`（或 `httpd`）、`iis`（或 `iis-w3c`）、`haproxy`、`traefik`、`envoy`、`tengine`、`nginx-ingress`（或 `ingress-nginx`）、`traefik-ingress`、`haproxy-ingress`，默认 `nginx`。
 - `logFormat` (string): 自定义日志格式（带 `$变量`）。
 - `logRegex` (string): 自定义正则（需命名分组）。
 - `timeLayout` (string): 时间解析格式，留空走默认。

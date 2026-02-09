@@ -61,6 +61,13 @@
     grid-template-columns: 1fr;
   }
 
+  .trend-card,
+  .new-old-card,
+  .geo-card,
+  .device-card {
+    grid-column: auto;
+  }
+
   .device-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

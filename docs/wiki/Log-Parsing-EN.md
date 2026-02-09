@@ -29,6 +29,30 @@ Poll this endpoint to update progress in UI.
 - IP geo is resolved in batches after parsing.
 - For speed: increase `parseBatchSize`, use faster disk, or split logs by day.
 
+## IIS default rule (W3C Extended)
+NginxPulse now supports `logType=iis` (alias: `iis-w3c`). The built-in parser follows the common IIS W3C default field order:
+
+`date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) cs(Referer) sc-status sc-substatus sc-win32-status time-taken`
+
+Notes:
+- Metadata lines starting with `#` (such as `#Software`, `#Version`, `#Fields`) are skipped automatically.
+- URL is built from `cs-uri-stem`; when `cs-uri-query` is not `-`, it is appended as `path?query`.
+- IIS W3C timestamps are typically UTC, and the default time layout is `2006-01-02 15:04:05`.
+
+Config example:
+```json
+{
+  "name": "iis-site",
+  "logPath": "/var/log/iis/u_ex*.log",
+  "logType": "iis"
+}
+```
+
+Sample line:
+```text
+2026-02-08 10:05:34 10.0.0.10 GET /index.html a=1&b=2 443 - 203.0.113.8 Mozilla/5.0+(Windows+NT+10.0;+Win64;+x64) https://example.com/ 200 0 0 36
+```
+
 ## Retention
 - `system.logRetentionDays` controls cleanup.
 - Cleanup runs at 02:00 (system timezone).

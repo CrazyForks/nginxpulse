@@ -125,6 +125,22 @@ export interface SimpleSeriesStats {
   pv_percent?: number[];
 }
 
+export interface RefererIPGroupStats {
+  key: string[];
+  uv: number[];
+  share: number[];
+  domestic: string[];
+  global: string[];
+  total_uv: number;
+}
+
+export interface RefererIPBatchStats {
+  all: RefererIPGroupStats;
+  search: RefererIPGroupStats;
+  direct: RefererIPGroupStats;
+  external: RefererIPGroupStats;
+}
+
 export interface RealtimeSeriesItem {
   name: string;
   count: number;

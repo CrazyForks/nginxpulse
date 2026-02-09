@@ -4,8 +4,8 @@
       <span class="title-chip">{{ t('realtime.title') }}</span>
       <p class="title-sub">{{ t('realtime.subtitle') }}</p>
     </div>
-    <div class="header-actions">
-      <HeaderToolbar>
+    <div class="header-actions header-actions-tech">
+      <HeaderToolbar class="header-toolbar-tech">
         <template #primary>
           <div class="site-select-pill">
             <span class="site-label">{{ t('common.website') }}</span>
@@ -81,9 +81,23 @@
           <span class="section-icon blue"><i class="ri-compass-3-line"></i></span>
           {{ t('realtime.referer') }}
         </div>
+        <button
+          type="button"
+          class="realtime-sort-btn"
+          :class="{ asc: sortOrders.referer === 'asc' }"
+          :aria-label="getSortAriaLabel('referer')"
+          :title="getSortAriaLabel('referer')"
+          @click="toggleSortOrder('referer')"
+        >
+          <span class="realtime-sort-label">{{ getSortLabel(sortOrders.referer) }}</span>
+          <span class="realtime-sort-icons" aria-hidden="true">
+            <i class="ri-arrow-up-s-line"></i>
+            <i class="ri-arrow-down-s-line"></i>
+          </span>
+        </button>
       </div>
       <div class="realtime-top">
-        <span class="realtime-rank">NO.1</span>
+        <span class="realtime-rank" :class="{ asc: sortOrders.referer === 'asc' }">{{ getRankLabel(sortOrders.referer) }}</span>
         <div class="realtime-top-title">{{ topReferer.name }}</div>
         <div class="realtime-top-meta">
           <span class="realtime-top-count">{{ formatCount(topReferer.count) }}</span>
@@ -120,9 +134,23 @@
           <span class="section-icon orange"><i class="ri-pages-line"></i></span>
           {{ t('realtime.pages') }}
         </div>
+        <button
+          type="button"
+          class="realtime-sort-btn"
+          :class="{ asc: sortOrders.page === 'asc' }"
+          :aria-label="getSortAriaLabel('page')"
+          :title="getSortAriaLabel('page')"
+          @click="toggleSortOrder('page')"
+        >
+          <span class="realtime-sort-label">{{ getSortLabel(sortOrders.page) }}</span>
+          <span class="realtime-sort-icons" aria-hidden="true">
+            <i class="ri-arrow-up-s-line"></i>
+            <i class="ri-arrow-down-s-line"></i>
+          </span>
+        </button>
       </div>
       <div class="realtime-top">
-        <span class="realtime-rank">NO.1</span>
+        <span class="realtime-rank" :class="{ asc: sortOrders.page === 'asc' }">{{ getRankLabel(sortOrders.page) }}</span>
         <div class="realtime-top-title">{{ topPage.name }}</div>
         <div class="realtime-top-meta">
           <span class="realtime-top-count">{{ formatCount(topPage.count) }}</span>
@@ -159,9 +187,23 @@
           <span class="section-icon orange"><i class="ri-login-circle-line"></i></span>
           {{ t('realtime.entryPages') }}
         </div>
+        <button
+          type="button"
+          class="realtime-sort-btn"
+          :class="{ asc: sortOrders.entry === 'asc' }"
+          :aria-label="getSortAriaLabel('entry')"
+          :title="getSortAriaLabel('entry')"
+          @click="toggleSortOrder('entry')"
+        >
+          <span class="realtime-sort-label">{{ getSortLabel(sortOrders.entry) }}</span>
+          <span class="realtime-sort-icons" aria-hidden="true">
+            <i class="ri-arrow-up-s-line"></i>
+            <i class="ri-arrow-down-s-line"></i>
+          </span>
+        </button>
       </div>
       <div class="realtime-top">
-        <span class="realtime-rank">NO.1</span>
+        <span class="realtime-rank" :class="{ asc: sortOrders.entry === 'asc' }">{{ getRankLabel(sortOrders.entry) }}</span>
         <div class="realtime-top-title">{{ topEntry.name }}</div>
         <div class="realtime-top-meta">
           <span class="realtime-top-count">{{ formatCount(topEntry.count) }}</span>
@@ -198,9 +240,23 @@
           <span class="section-icon green"><i class="ri-global-line"></i></span>
           {{ t('realtime.browser') }}
         </div>
+        <button
+          type="button"
+          class="realtime-sort-btn"
+          :class="{ asc: sortOrders.browser === 'asc' }"
+          :aria-label="getSortAriaLabel('browser')"
+          :title="getSortAriaLabel('browser')"
+          @click="toggleSortOrder('browser')"
+        >
+          <span class="realtime-sort-label">{{ getSortLabel(sortOrders.browser) }}</span>
+          <span class="realtime-sort-icons" aria-hidden="true">
+            <i class="ri-arrow-up-s-line"></i>
+            <i class="ri-arrow-down-s-line"></i>
+          </span>
+        </button>
       </div>
       <div class="realtime-top">
-        <span class="realtime-rank">NO.1</span>
+        <span class="realtime-rank" :class="{ asc: sortOrders.browser === 'asc' }">{{ getRankLabel(sortOrders.browser) }}</span>
         <div class="realtime-top-title">{{ topBrowser.name }}</div>
         <div class="realtime-top-meta">
           <span class="realtime-top-count">{{ formatCount(topBrowser.count) }}</span>
@@ -237,9 +293,23 @@
           <span class="section-icon blue"><i class="ri-map-pin-2-line"></i></span>
           {{ t('realtime.location') }}
         </div>
+        <button
+          type="button"
+          class="realtime-sort-btn"
+          :class="{ asc: sortOrders.city === 'asc' }"
+          :aria-label="getSortAriaLabel('city')"
+          :title="getSortAriaLabel('city')"
+          @click="toggleSortOrder('city')"
+        >
+          <span class="realtime-sort-label">{{ getSortLabel(sortOrders.city) }}</span>
+          <span class="realtime-sort-icons" aria-hidden="true">
+            <i class="ri-arrow-up-s-line"></i>
+            <i class="ri-arrow-down-s-line"></i>
+          </span>
+        </button>
       </div>
       <div class="realtime-top">
-        <span class="realtime-rank">NO.1</span>
+        <span class="realtime-rank" :class="{ asc: sortOrders.city === 'asc' }">{{ getRankLabel(sortOrders.city) }}</span>
         <div class="realtime-top-title">{{ topCity.name }}</div>
         <div class="realtime-top-meta">
           <span class="realtime-top-count">{{ formatCount(topCity.count) }}</span>
@@ -288,6 +358,9 @@ import SystemNotifications from '@/components/SystemNotifications.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import WebsiteSelect from '@/components/WebsiteSelect.vue';
 
+type SortOrder = 'desc' | 'asc';
+type SortableCardKey = 'referer' | 'page' | 'entry' | 'browser' | 'city';
+
 const websites = ref<WebsiteInfo[]>([]);
 const websitesLoading = ref(true);
 const currentWebsiteId = ref('');
@@ -307,6 +380,13 @@ let refreshTimer: number | null = null;
 
 const { t, n, locale } = useI18n({ useScope: 'global' });
 const currentLocale = computed(() => normalizeLocale(locale.value));
+const sortOrders = ref<Record<SortableCardKey, SortOrder>>({
+  referer: 'desc',
+  page: 'desc',
+  entry: 'desc',
+  browser: 'desc',
+  city: 'desc',
+});
 
 const activeTitle = computed(() => t('realtime.activeTitle', { value: currentWindow.value }));
 const deviceSubtitle = computed(() => t('realtime.deviceSubtitle', { value: currentWindow.value }));
@@ -340,32 +420,38 @@ const deviceStats = computed(() => {
   };
 });
 
-const topReferer = computed(() => getTopItem(referers.value));
-const topPage = computed(() => getTopItem(pages.value));
-const topEntry = computed(() => getTopItem(entryPages.value));
-const topBrowser = computed(() => getTopItem(browsers.value));
-const topCity = computed(() => getTopItem(locations.value));
-
-const refererItems = computed(() =>
+const refererItemsRaw = computed(() =>
   (referers.value || []).map((item) => ({
     ...item,
     name: formatRefererLabel(item.name, currentLocale.value, t),
   }))
 );
-const pageItems = computed(() => pages.value || []);
-const entryItems = computed(() => entryPages.value || []);
-const browserItems = computed(() =>
+const pageItemsRaw = computed(() => pages.value || []);
+const entryItemsRaw = computed(() => entryPages.value || []);
+const browserItemsRaw = computed(() =>
   (browsers.value || []).map((item) => ({
     ...item,
     name: formatBrowserLabel(item.name, t),
   }))
 );
-const cityItems = computed(() =>
+const cityItemsRaw = computed(() =>
   (locations.value || []).map((item) => ({
     ...item,
     name: formatLocationLabel(item.name, currentLocale.value, t),
   }))
 );
+
+const refererItems = computed(() => sortItemsByCount(refererItemsRaw.value, sortOrders.value.referer));
+const pageItems = computed(() => sortItemsByCount(pageItemsRaw.value, sortOrders.value.page));
+const entryItems = computed(() => sortItemsByCount(entryItemsRaw.value, sortOrders.value.entry));
+const browserItems = computed(() => sortItemsByCount(browserItemsRaw.value, sortOrders.value.browser));
+const cityItems = computed(() => sortItemsByCount(cityItemsRaw.value, sortOrders.value.city));
+
+const topReferer = computed(() => getTopItem(refererItems.value));
+const topPage = computed(() => getTopItem(pageItems.value));
+const topEntry = computed(() => getTopItem(entryItems.value));
+const topBrowser = computed(() => getTopItem(browserItems.value));
+const topCity = computed(() => getTopItem(cityItems.value));
 
 onMounted(() => {
   initWindowFromPreference();
@@ -471,6 +557,40 @@ function setWindow(value: number) {
   currentWindow.value = value;
 }
 
+function toggleSortOrder(key: SortableCardKey) {
+  sortOrders.value[key] = sortOrders.value[key] === 'desc' ? 'asc' : 'desc';
+}
+
+function getSortLabel(order: SortOrder) {
+  return order === 'desc' ? t('realtime.sortDesc') : t('realtime.sortAsc');
+}
+
+function getSortFieldLabel(key: SortableCardKey) {
+  switch (key) {
+    case 'referer':
+      return t('realtime.referer');
+    case 'page':
+      return t('realtime.pages');
+    case 'entry':
+      return t('realtime.entryPages');
+    case 'browser':
+      return t('realtime.browser');
+    default:
+      return t('realtime.location');
+  }
+}
+
+function getSortAriaLabel(key: SortableCardKey) {
+  return t('realtime.sortActionLabel', {
+    field: getSortFieldLabel(key),
+    order: getSortLabel(sortOrders.value[key]),
+  });
+}
+
+function getRankLabel(order: SortOrder) {
+  return order === 'desc' ? t('realtime.rankTop') : t('realtime.rankBottom');
+}
+
 function getWindowFromQuery() {
   const params = new URLSearchParams(window.location.search || '');
   const raw = params.get('window');
@@ -486,6 +606,19 @@ function getTopItem(items: RealtimeSeriesItem[] = []) {
     return { name: '-', count: 0, percent: 0 };
   }
   return items[0];
+}
+
+function sortItemsByCount(items: RealtimeSeriesItem[] = [], order: SortOrder = 'desc') {
+  const direction = order === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    if (a.count !== b.count) {
+      return (a.count - b.count) * direction;
+    }
+    if (a.percent !== b.percent) {
+      return (a.percent - b.percent) * direction;
+    }
+    return String(a.name || '').localeCompare(String(b.name || ''), currentLocale.value);
+  });
 }
 
 function formatCount(value: number) { return n(Number(value || 0)); }
@@ -547,6 +680,67 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
   align-items: center;
   gap: 10px;
   font-weight: 700;
+}
+
+.realtime-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-muted);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.realtime-sort-btn:hover {
+  border-color: rgba(var(--primary-color-rgb), 0.42);
+  color: var(--text);
+}
+
+.realtime-sort-btn:focus-visible {
+  outline: none;
+  border-color: rgba(var(--primary-color-rgb), 0.55);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.12);
+}
+
+.realtime-sort-btn.asc {
+  border-color: rgba(var(--primary-color-rgb), 0.42);
+  background: rgba(var(--primary-color-rgb), 0.12);
+  color: var(--primary);
+}
+
+.realtime-sort-label {
+  min-width: 2.6em;
+  text-align: left;
+}
+
+.realtime-sort-icons {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0.72;
+}
+
+.realtime-sort-icons i {
+  font-size: 12px;
+  color: rgba(var(--primary-color-rgb), 0.35);
+}
+
+.realtime-sort-btn .realtime-sort-icons i:last-child {
+  color: var(--primary);
+}
+
+.realtime-sort-btn.asc .realtime-sort-icons i:first-child {
+  color: var(--primary);
+}
+
+.realtime-sort-btn.asc .realtime-sort-icons i:last-child {
+  color: rgba(var(--primary-color-rgb), 0.35);
 }
 
 .realtime-metric {
@@ -639,6 +833,11 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
   color: var(--accent);
   font-size: 11px;
   font-weight: 700;
+}
+
+.realtime-rank.asc {
+  background: rgba(var(--primary-color-rgb), 0.18);
+  color: var(--primary);
 }
 
 .realtime-top-title {
