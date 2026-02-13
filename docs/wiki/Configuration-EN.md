@@ -243,6 +243,7 @@ Common fields:
 ### system
 - `logDestination`: `file` or `stdout`.
 - `taskInterval`: interval for periodic tasks, default `1m`.
+- `httpSourceTimeout`: timeout for remote HTTP log reads (Go duration), default `2m` (e.g. `30s`, `2m`).
 - `logRetentionDays`: days to keep logs.
 - `parseBatchSize`: log parse batch size.
 - `ipGeoCacheLimit`: max IP cache entries.
@@ -270,6 +271,7 @@ Common fields:
 Supported env vars:
 - `CONFIG_JSON`, `WEBSITES`
 - `LOG_DEST`, `TASK_INTERVAL`, `LOG_RETENTION_DAYS`
+- `HTTP_SOURCE_TIMEOUT`
 - `LOG_PARSE_BATCH_SIZE`, `IP_GEO_CACHE_LIMIT`
 - `IP_GEO_API_URL`
 - `DEMO_MODE`, `ACCESS_KEYS`, `APP_LANGUAGE`

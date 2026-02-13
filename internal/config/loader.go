@@ -14,6 +14,7 @@ const (
 	envWebsites          = "WEBSITES"
 	envLogDestination    = "LOG_DEST"
 	envTaskInterval      = "TASK_INTERVAL"
+	envHTTPSourceTimeout = "HTTP_SOURCE_TIMEOUT"
 	envLogRetentionDays  = "LOG_RETENTION_DAYS"
 	envLogParseBatchSize = "LOG_PARSE_BATCH_SIZE"
 	envServerPort        = "SERVER_PORT"
@@ -50,16 +51,17 @@ var (
 		"atom.xml$",
 	}
 	defaultSystem = SystemConfig{
-		LogDestination:   "file",
-		TaskInterval:     "1m",
-		LogRetentionDays: 30,
-		ParseBatchSize:   100,
-		IPGeoCacheLimit:  1000000,
-		IPGeoAPIURL:      DefaultIPGeoAPIURL,
-		DemoMode:         false,
-		AccessKeys:       nil,
-		Language:         "zh-CN",
-		MobilePWAEnabled: false,
+		LogDestination:    "file",
+		TaskInterval:      "1m",
+		HTTPSourceTimeout: "2m",
+		LogRetentionDays:  30,
+		ParseBatchSize:    100,
+		IPGeoCacheLimit:   1000000,
+		IPGeoAPIURL:       DefaultIPGeoAPIURL,
+		DemoMode:          false,
+		AccessKeys:        nil,
+		Language:          "zh-CN",
+		MobilePWAEnabled:  false,
 	}
 	defaultServer = ServerConfig{
 		Port: ":8089",
@@ -150,6 +152,17 @@ func applyEnvOverrides(cfg *Config) error {
 
 	if raw, _ := getEnvValue(envTaskInterval); raw != "" {
 		cfg.System.TaskInterval = raw
+	}
+	if raw, key := getEnvValue(envHTTPSourceTimeout); raw != "" {
+		trimmed := strings.TrimSpace(raw)
+		parsed, err := time.ParseDuration(trimmed)
+		if err != nil {
+			return fmt.Errorf("解析 %s 失败: %w", key, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("%s 必须大于0", key)
+		}
+		cfg.System.HTTPSourceTimeout = trimmed
 	}
 
 	if raw, key := getEnvValue(envLogRetentionDays); raw != "" {
@@ -289,6 +302,11 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.System.TaskInterval == "" {
 		cfg.System.TaskInterval = defaultSystem.TaskInterval
+	}
+	if cfg.System.HTTPSourceTimeout == "" {
+		cfg.System.HTTPSourceTimeout = defaultSystem.HTTPSourceTimeout
+	} else if parsed, err := time.ParseDuration(strings.TrimSpace(cfg.System.HTTPSourceTimeout)); err != nil || parsed <= 0 {
+		cfg.System.HTTPSourceTimeout = defaultSystem.HTTPSourceTimeout
 	}
 	if cfg.System.LogRetentionDays <= 0 {
 		cfg.System.LogRetentionDays = defaultSystem.LogRetentionDays

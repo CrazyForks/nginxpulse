@@ -30,7 +30,21 @@ type HTTPIndex struct {
 }
 
 func NewHTTPSource(websiteID, id, url string, headers map[string]string, rangePolicy RangePolicy, index *HTTPIndex, compression string) *HTTPSource {
-	client := &http.Client{Timeout: 30 * time.Second}
+	return NewHTTPSourceWithTimeout(websiteID, id, url, headers, rangePolicy, index, compression, 30*time.Second)
+}
+
+func NewHTTPSourceWithTimeout(
+	websiteID, id, url string,
+	headers map[string]string,
+	rangePolicy RangePolicy,
+	index *HTTPIndex,
+	compression string,
+	timeout time.Duration,
+) *HTTPSource {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	client := &http.Client{Timeout: timeout}
 	return &HTTPSource{
 		websiteID:   websiteID,
 		id:          id,

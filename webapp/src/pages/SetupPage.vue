@@ -361,6 +361,16 @@
               </div>
               <div class="setup-field-grid">
                 <div class="setup-field">
+                  <label class="setup-label">{{ t('setup.fields.httpSourceTimeout') }}</label>
+                  <input
+                    v-model.trim="systemDraft.httpSourceTimeout"
+                    class="setup-input"
+                    type="text"
+                    :placeholder="t('setup.placeholders.httpSourceTimeout')"
+                  />
+                  <div class="setup-hint">{{ t('setup.hints.httpSourceTimeout') }}</div>
+                </div>
+                <div class="setup-field">
                   <label class="setup-label">{{ t('setup.fields.language') }}</label>
                   <Dropdown
                     v-model="systemDraft.language"
@@ -725,6 +735,7 @@ const databaseDraft = reactive({
 const systemDraft = reactive({
   logDestination: 'file',
   taskInterval: '1m',
+  httpSourceTimeout: '2m',
   logRetentionDays: '30',
   parseBatchSize: '100',
   ipGeoCacheLimit: '1000000',
@@ -1324,6 +1335,7 @@ function buildConfig(collectErrors = true): { config: ConfigPayload; errors: Fie
     system: {
       logDestination: systemDraft.logDestination.trim(),
       taskInterval: systemDraft.taskInterval.trim(),
+      httpSourceTimeout: systemDraft.httpSourceTimeout.trim(),
       logRetentionDays: parseOptionalInt(systemDraft.logRetentionDays, 'system.logRetentionDays', errors, false),
       parseBatchSize: parseOptionalInt(systemDraft.parseBatchSize, 'system.parseBatchSize', errors, false),
       ipGeoCacheLimit: parseOptionalInt(systemDraft.ipGeoCacheLimit, 'system.ipGeoCacheLimit', errors, false),
@@ -1524,6 +1536,7 @@ function hydrateDraft(config: ConfigPayload) {
 
   systemDraft.logDestination = config.system?.logDestination || 'file';
   systemDraft.taskInterval = config.system?.taskInterval || '1m';
+  systemDraft.httpSourceTimeout = config.system?.httpSourceTimeout || '2m';
   systemDraft.logRetentionDays = String(config.system?.logRetentionDays ?? 30);
   systemDraft.parseBatchSize = String(config.system?.parseBatchSize ?? 100);
   systemDraft.ipGeoCacheLimit = String(config.system?.ipGeoCacheLimit ?? 1000000);

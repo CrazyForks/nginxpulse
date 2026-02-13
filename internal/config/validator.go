@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type FieldError struct {
@@ -163,6 +164,14 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 	if cfg.System.IPGeoCacheLimit <= 0 {
 		addError("system.ipGeoCacheLimit", "ipGeoCacheLimit 必须大于 0")
 	}
+	if strings.TrimSpace(cfg.System.HTTPSourceTimeout) != "" {
+		timeout, err := time.ParseDuration(strings.TrimSpace(cfg.System.HTTPSourceTimeout))
+		if err != nil {
+			addError("system.httpSourceTimeout", "httpSourceTimeout 格式无效，示例：30s、2m")
+		} else if timeout <= 0 {
+			addError("system.httpSourceTimeout", "httpSourceTimeout 必须大于 0")
+		}
+	}
 	if basePath := NormalizeWebBasePath(cfg.System.WebBasePath); basePath != "" {
 		if strings.Contains(basePath, "/") {
 			addError("system.webBasePath", "webBasePath 仅支持单段路径")
@@ -170,14 +179,14 @@ func ValidateConfig(cfg *Config, opts ValidateOptions) ValidationResult {
 			addError("system.webBasePath", "webBasePath 仅支持字母、数字、下划线或短横线")
 		} else {
 			reserved := map[string]struct{}{
-				"api":          {},
-				"m":            {},
-				"assets":       {},
-				"favicon.svg":  {},
-				"brand-mark":   {},
+				"api":            {},
+				"m":              {},
+				"assets":         {},
+				"favicon.svg":    {},
+				"brand-mark":     {},
 				"brand-mark.svg": {},
-				"app-config.js": {},
-				"health":       {},
+				"app-config.js":  {},
+				"health":         {},
 			}
 			if _, ok := reserved[strings.ToLower(basePath)]; ok {
 				addError("system.webBasePath", "webBasePath 与系统保留路径冲突")

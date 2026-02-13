@@ -40,7 +40,7 @@ func NewFromConfig(websiteID string, cfg config.SourceConfig) (LogSource, error)
 				JSONMap: cfg.Index.JSONMap,
 			}
 		}
-		return NewHTTPSource(
+		return NewHTTPSourceWithTimeout(
 			websiteID,
 			cfg.ID,
 			cfg.URL,
@@ -48,6 +48,7 @@ func NewFromConfig(websiteID string, cfg config.SourceConfig) (LogSource, error)
 			normalizeRangePolicy(cfg.RangePolicy),
 			index,
 			cfg.Compression,
+			config.GetHTTPSourceTimeout(),
 		), nil
 	case string(SourceS3):
 		return NewS3Source(

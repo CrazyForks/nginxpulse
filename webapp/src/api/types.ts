@@ -53,6 +53,7 @@ export interface WebsiteConfig {
 export interface SystemConfig {
   logDestination?: string;
   taskInterval?: string;
+  httpSourceTimeout?: string;
   logRetentionDays?: number;
   parseBatchSize?: number;
   ipGeoCacheLimit?: number;

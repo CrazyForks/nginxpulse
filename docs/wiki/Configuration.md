@@ -251,6 +251,7 @@ https://example.com/m/?tabbarBottom=false
 ### system 系统配置
 - `logDestination`: `file` 或 `stdout`，默认 `file`。
 - `taskInterval`: 定期任务间隔，默认 `1m`，最小 5s。
+- `httpSourceTimeout`: 远程 HTTP 日志读取超时（Go duration），默认 `2m`，示例：`30s`、`2m`。
 - `logRetentionDays`: 保留天数，默认 30。
 - `parseBatchSize`: 单批解析条数，默认 100。
 - `ipGeoCacheLimit`: IP 缓存上限，默认 1000000。
@@ -280,6 +281,7 @@ https://example.com/m/?tabbarBottom=false
 - `WEBSITES`: 仅网站数组 JSON 字符串
 - `LOG_DEST`
 - `TASK_INTERVAL`
+- `HTTP_SOURCE_TIMEOUT`
 - `LOG_RETENTION_DAYS`
 - `LOG_PARSE_BATCH_SIZE`
 - `IP_GEO_CACHE_LIMIT`

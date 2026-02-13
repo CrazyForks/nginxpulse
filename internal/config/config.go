@@ -93,17 +93,18 @@ type WhitelistConfig struct {
 }
 
 type SystemConfig struct {
-	LogDestination   string   `json:"logDestination"`
-	TaskInterval     string   `json:"taskInterval"` // "5m" "25s"
-	LogRetentionDays int      `json:"logRetentionDays"`
-	ParseBatchSize   int      `json:"parseBatchSize"`
-	IPGeoCacheLimit  int      `json:"ipGeoCacheLimit"`
-	IPGeoAPIURL      string   `json:"ipGeoApiUrl"`
-	DemoMode         bool     `json:"demoMode"`
-	AccessKeys       []string `json:"accessKeys"`
-	Language         string   `json:"language"`
-	WebBasePath      string   `json:"webBasePath,omitempty"`
-	MobilePWAEnabled bool     `json:"mobilePwaEnabled"`
+	LogDestination    string   `json:"logDestination"`
+	TaskInterval      string   `json:"taskInterval"` // "5m" "25s"
+	HTTPSourceTimeout string   `json:"httpSourceTimeout,omitempty"`
+	LogRetentionDays  int      `json:"logRetentionDays"`
+	ParseBatchSize    int      `json:"parseBatchSize"`
+	IPGeoCacheLimit   int      `json:"ipGeoCacheLimit"`
+	IPGeoAPIURL       string   `json:"ipGeoApiUrl"`
+	DemoMode          bool     `json:"demoMode"`
+	AccessKeys        []string `json:"accessKeys"`
+	Language          string   `json:"language"`
+	WebBasePath       string   `json:"webBasePath,omitempty"`
+	MobilePWAEnabled  bool     `json:"mobilePwaEnabled"`
 }
 
 type ServerConfig struct {
@@ -176,6 +177,19 @@ func GetIPGeoAPIURL() string {
 		return DefaultIPGeoAPIURL
 	}
 	return value
+}
+
+func GetHTTPSourceTimeout() time.Duration {
+	cfg := ReadConfig()
+	value := strings.TrimSpace(cfg.System.HTTPSourceTimeout)
+	if value == "" {
+		return 2 * time.Minute
+	}
+	timeout, err := time.ParseDuration(value)
+	if err != nil || timeout <= 0 {
+		return 2 * time.Minute
+	}
+	return timeout
 }
 
 // ParseInterval 解析间隔配置字符串，支持分钟(m)和秒(s)单位
