@@ -274,6 +274,11 @@ nginxpulse: initializing postgres data dir at /app/var/pgdata
 -e TMPDIR=/app/var/nginxpulse_data/tmp
 ```
 
+5) 解析入库的数据会一直保留吗  
+不会。入库后的访问数据会按 `system.logRetentionDays` 定时清理（默认 30 天）。  
+例如你一次解析了几个月数据，后续仍会逐步清理掉保留天数之外的数据。  
+注意：该参数不影响原始 Nginx 日志文件，也不等于系统运行日志（`var/nginxpulse_data/nginxpulse.log`）的轮转策略。
+
 ## 目录结构与主要文件
 
 ```

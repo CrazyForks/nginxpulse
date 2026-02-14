@@ -252,7 +252,7 @@ https://example.com/m/?tabbarBottom=false
 - `logDestination`: `file` 或 `stdout`，默认 `file`。
 - `taskInterval`: 定期任务间隔，默认 `1m`，最小 5s。
 - `httpSourceTimeout`: 远程 HTTP 日志读取超时（Go duration），默认 `2m`，示例：`30s`、`2m`。
-- `logRetentionDays`: 保留天数，默认 30。
+- `logRetentionDays`: 保留天数，默认 30。仅作用于“已解析入库”的访问数据（明细/聚合/会话）；超过天数的数据会被定时清理。不会删除原始 Nginx 日志文件，也不影响系统运行日志文件的轮转。
 - `parseBatchSize`: 单批解析条数，默认 100。
 - `ipGeoCacheLimit`: IP 缓存上限，默认 1000000。
 - `ipGeoApiUrl`: IP 归属地远端 API 地址，默认 `http://ip-api.com/batch`。注意：自定义 API 必须严格遵循《IP 归属地解析》文档中的协议定义。
