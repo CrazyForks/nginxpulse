@@ -1,0 +1,619 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+
+	"github.com/likaia/nginxpulse/internal/sqlutil"
+	"github.com/sirupsen/logrus"
+)
+
+func (r *Repository) cleanupOrphanDims(websiteID string) error {
+	logTable := fmt.Sprintf("%s_nginx_logs", websiteID)
+	hasIPID, err := r.tableHasColumn(logTable, "ip_id")
+	if err != nil || !hasIPID {
+		return err
+	}
+
+	type dimSpec struct {
+		table  string
+		column string
+	}
+	dims := []dimSpec{
+		{table: fmt.Sprintf("%s_dim_ip", websiteID), column: "ip_id"},
+		{table: fmt.Sprintf("%s_dim_url", websiteID), column: "url_id"},
+		{table: fmt.Sprintf("%s_dim_referer", websiteID), column: "referer_id"},
+		{table: fmt.Sprintf("%s_dim_ua", websiteID), column: "ua_id"},
+		{table: fmt.Sprintf("%s_dim_location", websiteID), column: "location_id"},
+	}
+
+	for _, dim := range dims {
+		exists, err := r.tableExists(dim.table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if _, err := r.db.Exec(fmt.Sprintf(
+			`DELETE FROM "%s" WHERE id NOT IN (SELECT %s FROM "%s")`,
+			dim.table, dim.column, logTable,
+		)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) clearDimTablesForWebsite(websiteID string) error {
+	dimTables := []string{
+		fmt.Sprintf("%s_dim_ip", websiteID),
+		fmt.Sprintf("%s_dim_url", websiteID),
+		fmt.Sprintf("%s_dim_referer", websiteID),
+		fmt.Sprintf("%s_dim_ua", websiteID),
+		fmt.Sprintf("%s_dim_location", websiteID),
+	}
+	for _, table := range dimTables {
+		exists, err := r.tableExists(table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if _, err := r.db.Exec(fmt.Sprintf(`DELETE FROM "%s"`, table)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) clearFirstSeenForWebsite(websiteID string) error {
+	table := fmt.Sprintf("%s_first_seen", websiteID)
+	exists, err := r.tableExists(table)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if _, err := r.db.Exec(fmt.Sprintf(`DELETE FROM "%s"`, table)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Repository) clearSessionTablesForWebsite(websiteID string) error {
+	tables := []string{
+		fmt.Sprintf("%s_sessions", websiteID),
+		fmt.Sprintf("%s_session_state", websiteID),
+	}
+	for _, table := range tables {
+		exists, err := r.tableExists(table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if _, err := r.db.Exec(fmt.Sprintf(`DELETE FROM "%s"`, table)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) clearSessionAggTablesForWebsite(websiteID string) error {
+	tables := []string{
+		fmt.Sprintf("%s_agg_session_daily", websiteID),
+		fmt.Sprintf("%s_agg_entry_daily", websiteID),
+	}
+	for _, table := range tables {
+		exists, err := r.tableExists(table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if _, err := r.db.Exec(fmt.Sprintf(`DELETE FROM "%s"`, table)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) ensureWebsiteSchema(websiteID string) error {
+	logTable := fmt.Sprintf("%s_nginx_logs", websiteID)
+	exists, err := r.tableExists(logTable)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if err := createDimTables(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := createLogTable(r.db, logTable); err != nil {
+			return err
+		}
+		if err := createLogIndexes(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := createAggTables(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := createFirstSeenTable(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := createSessionTables(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := createSessionAggTables(r.db, websiteID); err != nil {
+			return err
+		}
+		if err := r.backfillAggregatesIfEmpty(websiteID); err != nil {
+			return err
+		}
+		if err := r.backfillFirstSeenIfEmpty(websiteID); err != nil {
+			return err
+		}
+		if err := r.backfillSessionsIfEmpty(websiteID); err != nil {
+			return err
+		}
+		return r.backfillSessionAggregatesIfEmpty(websiteID)
+	}
+
+	hasIPID, err := r.tableHasColumn(logTable, "ip_id")
+	if err != nil {
+		return err
+	}
+
+	if !hasIPID {
+		return r.migrateLegacyLogs(websiteID)
+	}
+
+	if err := createDimTables(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := createLogIndexes(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := createAggTables(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := createFirstSeenTable(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := createSessionTables(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := createSessionAggTables(r.db, websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillAggregatesIfEmpty(websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillFirstSeenIfEmpty(websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillSessionsIfEmpty(websiteID); err != nil {
+		return err
+	}
+	return r.backfillSessionAggregatesIfEmpty(websiteID)
+}
+
+func (r *Repository) migrateLegacyLogs(websiteID string) error {
+	logTable := fmt.Sprintf("%s_nginx_logs", websiteID)
+	newLogTable := fmt.Sprintf("%s_nginx_logs_new", websiteID)
+
+	logrus.WithField("website", websiteID).Info("检测到旧日志表结构，开始迁移")
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS "%s"`, newLogTable)); err != nil {
+		return err
+	}
+	if err := createDimTables(tx, websiteID); err != nil {
+		return err
+	}
+	if err := createLogTable(tx, newLogTable); err != nil {
+		return err
+	}
+	if err := createAggTables(tx, websiteID); err != nil {
+		return err
+	}
+	if err := createFirstSeenTable(tx, websiteID); err != nil {
+		return err
+	}
+	if err := createSessionTables(tx, websiteID); err != nil {
+		return err
+	}
+	if err := createSessionAggTables(tx, websiteID); err != nil {
+		return err
+	}
+
+	if _, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s_dim_ip"(ip) SELECT DISTINCT ip FROM "%s" ON CONFLICT DO NOTHING`,
+		websiteID, logTable,
+	)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s_dim_url"(url) SELECT DISTINCT url FROM "%s" ON CONFLICT DO NOTHING`,
+		websiteID, logTable,
+	)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s_dim_referer"(referer) SELECT DISTINCT referer FROM "%s" ON CONFLICT DO NOTHING`,
+		websiteID, logTable,
+	)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s_dim_ua"(browser, os, device)
+         SELECT DISTINCT user_browser, user_os, user_device FROM "%s"
+         ON CONFLICT DO NOTHING`,
+		websiteID, logTable,
+	)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s_dim_location"(domestic, global)
+         SELECT DISTINCT domestic_location, global_location FROM "%s"
+         ON CONFLICT DO NOTHING`,
+		websiteID, logTable,
+	)); err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(fmt.Sprintf(
+		`INSERT INTO "%s"(
+            ip_id, pageview_flag, timestamp, method, url_id,
+            status_code, bytes_sent, referer_id, ua_id, location_id
+        )
+        SELECT
+            ip.id, l.pageview_flag, l.timestamp, l.method, url.id,
+            l.status_code, l.bytes_sent, ref.id, ua.id, loc.id
+        FROM "%s" l
+        JOIN "%s_dim_ip" ip ON ip.ip = l.ip
+        JOIN "%s_dim_url" url ON url.url = l.url
+        JOIN "%s_dim_referer" ref ON ref.referer = l.referer
+        JOIN "%s_dim_ua" ua
+            ON ua.browser = l.user_browser AND ua.os = l.user_os AND ua.device = l.user_device
+        JOIN "%s_dim_location" loc
+            ON loc.domestic = l.domestic_location AND loc.global = l.global_location`,
+		newLogTable, logTable,
+		websiteID, websiteID, websiteID, websiteID, websiteID,
+	))
+	if err != nil {
+		return err
+	}
+
+	if _, err = tx.Exec(fmt.Sprintf(`DROP TABLE "%s"`, logTable)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(fmt.Sprintf(`ALTER TABLE "%s" RENAME TO "%s"`, newLogTable, logTable)); err != nil {
+		return err
+	}
+	if err := createLogIndexes(tx, websiteID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	if err := r.backfillAggregates(websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillFirstSeen(websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillSessions(websiteID); err != nil {
+		return err
+	}
+	if err := r.backfillSessionAggregates(websiteID); err != nil {
+		return err
+	}
+
+	logrus.WithField("website", websiteID).Info("旧日志表迁移完成")
+	return nil
+}
+
+func (r *Repository) tableExists(tableName string) (bool, error) {
+	row := r.db.QueryRow(sqlutil.ReplacePlaceholders(
+		`SELECT 1
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public'
+           AND c.relkind IN ('r', 'p')
+           AND c.relname = ?`,
+	), tableName)
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Repository) tableHasRows(tableName string) (bool, error) {
+	exists, err := r.tableExists(tableName)
+	if err != nil || !exists {
+		return false, err
+	}
+	row := r.db.QueryRow(fmt.Sprintf(`SELECT 1 FROM "%s" LIMIT 1`, tableName))
+	var value int
+	if err := row.Scan(&value); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Repository) tableHasColumn(tableName, columnName string) (bool, error) {
+	rows, err := r.db.Query(sqlutil.ReplacePlaceholders(
+		`SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+         LIMIT 1`,
+	), tableName, columnName)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		return true, nil
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func createDimTables(execer sqlExecer, websiteID string) error {
+	stmts := []string{
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_dim_ip" (
+                id BIGSERIAL PRIMARY KEY,
+                ip TEXT NOT NULL UNIQUE
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_dim_url" (
+                id BIGSERIAL PRIMARY KEY,
+                url TEXT NOT NULL UNIQUE
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_dim_referer" (
+                id BIGSERIAL PRIMARY KEY,
+                referer TEXT NOT NULL UNIQUE
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_dim_ua" (
+                id BIGSERIAL PRIMARY KEY,
+                browser TEXT NOT NULL,
+                os TEXT NOT NULL,
+                device TEXT NOT NULL,
+                UNIQUE(browser, os, device)
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_dim_location" (
+                id BIGSERIAL PRIMARY KEY,
+                domestic TEXT NOT NULL,
+                global TEXT NOT NULL,
+                UNIQUE(domestic, global)
+            )`, websiteID,
+		),
+	}
+
+	for _, stmt := range stmts {
+		if _, err := execer.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createLogTable(execer sqlExecer, tableName string) error {
+	stmt := fmt.Sprintf(
+		`CREATE TABLE IF NOT EXISTS "%s" (
+            id BIGSERIAL NOT NULL,
+            ip_id BIGINT NOT NULL,
+            pageview_flag SMALLINT NOT NULL DEFAULT 0,
+            timestamp BIGINT NOT NULL,
+            method TEXT NOT NULL,
+            url_id BIGINT NOT NULL,
+            status_code INT NOT NULL,
+            bytes_sent BIGINT NOT NULL,
+            referer_id BIGINT NOT NULL,
+            ua_id BIGINT NOT NULL,
+            location_id BIGINT NOT NULL,
+            PRIMARY KEY (id, timestamp)
+        ) PARTITION BY RANGE (timestamp)`, tableName,
+	)
+	_, err := execer.Exec(stmt)
+	if err != nil {
+		return err
+	}
+	partition := fmt.Sprintf(
+		`CREATE TABLE IF NOT EXISTS "%s_default" PARTITION OF "%s" DEFAULT`,
+		tableName, tableName,
+	)
+	_, err = execer.Exec(partition)
+	return err
+}
+
+func createLogIndexes(execer sqlExecer, websiteID string) error {
+	tableName := fmt.Sprintf("%s_nginx_logs", websiteID)
+	stmts := []string{
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_timestamp ON "%s"(timestamp)`,
+			websiteID, tableName,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_pv_ts_ip ON "%s"(timestamp, ip_id) WHERE pageview_flag = 1`,
+			websiteID, tableName,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_session_key ON "%s"(ip_id, ua_id, timestamp) WHERE pageview_flag = 1`,
+			websiteID, tableName,
+		),
+	}
+	for _, stmt := range stmts {
+		if _, err := execer.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createAggTables(execer sqlExecer, websiteID string) error {
+	stmts := []string{
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_hourly" (
+                bucket BIGINT PRIMARY KEY,
+                pv BIGINT NOT NULL DEFAULT 0,
+                traffic BIGINT NOT NULL DEFAULT 0,
+                s2xx BIGINT NOT NULL DEFAULT 0,
+                s3xx BIGINT NOT NULL DEFAULT 0,
+                s4xx BIGINT NOT NULL DEFAULT 0,
+                s5xx BIGINT NOT NULL DEFAULT 0,
+                other BIGINT NOT NULL DEFAULT 0
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_hourly_ip" (
+                bucket BIGINT NOT NULL,
+                ip_id BIGINT NOT NULL,
+                PRIMARY KEY(bucket, ip_id)
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_daily" (
+                day DATE PRIMARY KEY,
+                pv BIGINT NOT NULL DEFAULT 0,
+                traffic BIGINT NOT NULL DEFAULT 0,
+                s2xx BIGINT NOT NULL DEFAULT 0,
+                s3xx BIGINT NOT NULL DEFAULT 0,
+                s4xx BIGINT NOT NULL DEFAULT 0,
+                s5xx BIGINT NOT NULL DEFAULT 0,
+                other BIGINT NOT NULL DEFAULT 0
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_daily_ip" (
+                day DATE NOT NULL,
+                ip_id BIGINT NOT NULL,
+                PRIMARY KEY(day, ip_id)
+            )`, websiteID,
+		),
+	}
+
+	for _, stmt := range stmts {
+		if _, err := execer.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createFirstSeenTable(execer sqlExecer, websiteID string) error {
+	stmt := fmt.Sprintf(
+		`CREATE TABLE IF NOT EXISTS "%s_first_seen" (
+            ip_id BIGINT PRIMARY KEY,
+            first_ts BIGINT NOT NULL
+        )`, websiteID,
+	)
+	_, err := execer.Exec(stmt)
+	return err
+}
+
+func createSessionTables(execer sqlExecer, websiteID string) error {
+	stmts := []string{
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_sessions" (
+                id BIGSERIAL PRIMARY KEY,
+                ip_id BIGINT NOT NULL,
+                ua_id BIGINT NOT NULL,
+                location_id BIGINT NOT NULL,
+                start_ts BIGINT NOT NULL,
+                end_ts BIGINT NOT NULL,
+                entry_url_id BIGINT NOT NULL,
+                exit_url_id BIGINT NOT NULL,
+                page_count INT NOT NULL DEFAULT 1
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_sessions_start ON "%s_sessions"(start_ts)`,
+			websiteID, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_sessions_key ON "%s_sessions"(ip_id, ua_id, end_ts)`,
+			websiteID, websiteID,
+		),
+		// 支持 IP 归属地回填：UPDATE ... WHERE ip_id = ? AND location_id = ?
+		fmt.Sprintf(
+			`CREATE INDEX IF NOT EXISTS idx_%s_sessions_ip_loc ON "%s_sessions"(ip_id, location_id)`,
+			websiteID, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_session_state" (
+                ip_id BIGINT NOT NULL,
+                ua_id BIGINT NOT NULL,
+                session_id BIGINT NOT NULL,
+                last_ts BIGINT NOT NULL,
+                PRIMARY KEY(ip_id, ua_id)
+            )`, websiteID,
+		),
+	}
+	for _, stmt := range stmts {
+		if _, err := execer.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createSessionAggTables(execer sqlExecer, websiteID string) error {
+	stmts := []string{
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_session_daily" (
+                day DATE PRIMARY KEY,
+                sessions BIGINT NOT NULL DEFAULT 0
+            )`, websiteID,
+		),
+		fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS "%s_agg_entry_daily" (
+                day DATE NOT NULL,
+                entry_url_id BIGINT NOT NULL,
+                count BIGINT NOT NULL DEFAULT 0,
+                PRIMARY KEY(day, entry_url_id)
+            )`, websiteID,
+		),
+	}
+	for _, stmt := range stmts {
+		if _, err := execer.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
