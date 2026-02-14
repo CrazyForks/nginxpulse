@@ -1371,17 +1371,6 @@ func (r *Repository) batchInsertLogsForWebsiteOnce(websiteID string, logs []Ngin
 	}
 	defer sessions.Close()
 
-	stmtNginx, err := tx.Prepare(sqlutil.ReplacePlaceholders(fmt.Sprintf(`
-        INSERT INTO "%s" (
-        ip_id, pageview_flag, timestamp, method, url_id, 
-        status_code, bytes_sent, referer_id, ua_id, location_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, logTable)))
-	if err != nil {
-		return err
-	}
-	defer stmtNginx.Close()
-
 	cache := newDimCaches()
 	aggBatch := newAggBatch()
 	sessionCache := make(map[string]sessionState)
@@ -1394,6 +1383,7 @@ func (r *Repository) batchInsertLogsForWebsiteOnce(websiteID string, logs []Ngin
 	lockedSessionKeys := make(map[string]struct{})
 	// 将 first_seen 的写入从“每条日志一次 upsert”改为“本批次去重后按 ip_id 顺序写入”，降低死锁概率与锁竞争。
 	firstSeenMinTs := make(map[int64]int64)
+	logRows := make([]logInsertRow, 0, len(logs))
 
 	// 执行批量插入
 	for _, log := range logs {
@@ -1438,16 +1428,21 @@ func (r *Repository) batchInsertLogsForWebsiteOnce(websiteID string, logs []Ngin
 			return err
 		}
 
-		_, err = stmtNginx.Exec(
-			ipID, log.PageviewFlag, log.Timestamp.Unix(), log.Method, urlID,
-			log.Status, log.BytesSent, refererID, uaID, locationID,
-		)
-		if err != nil {
-			return err
-		}
+		ts := log.Timestamp.Unix()
+		logRows = append(logRows, logInsertRow{
+			ipID:         ipID,
+			pageviewFlag: log.PageviewFlag,
+			timestamp:    ts,
+			method:       log.Method,
+			urlID:        urlID,
+			statusCode:   log.Status,
+			bytesSent:    log.BytesSent,
+			refererID:    refererID,
+			uaID:         uaID,
+			locationID:   locationID,
+		})
 
 		if log.PageviewFlag == 1 {
-			ts := log.Timestamp.Unix()
 			if prev, ok := firstSeenMinTs[ipID]; !ok || ts < prev {
 				firstSeenMinTs[ipID] = ts
 			}
@@ -1470,6 +1465,10 @@ func (r *Repository) batchInsertLogsForWebsiteOnce(websiteID string, logs []Ngin
 		}
 
 		aggBatch.add(log, ipID)
+	}
+
+	if err := bulkInsertLogRows(tx, logTable, logRows); err != nil {
+		return err
 	}
 
 	// 统一顺序写入 first_seen：按 ip_id 升序，避免不同事务对同一批 key 的锁顺序不一致。
@@ -2111,6 +2110,19 @@ type pendingSessionStateUpsert struct {
 	uaID      int64
 	sessionID int64
 	lastTs    int64
+}
+
+type logInsertRow struct {
+	ipID         int64
+	pageviewFlag int
+	timestamp    int64
+	method       string
+	urlID        int64
+	statusCode   int
+	bytesSent    int
+	refererID    int64
+	uaID         int64
+	locationID   int64
 }
 
 const sessionGapSeconds = int64(1800)
@@ -2784,6 +2796,72 @@ func applyAggUpdates(aggs *aggStatements, batch *aggBatch) error {
 
 		return nil
 	*/
+}
+
+func bulkInsertLogRows(tx *sql.Tx, logTable string, rows []logInsertRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	const (
+		columnCount = 10
+		// PostgreSQL 参数上限是 65535，预留余量避免触边界。
+		maxParams = 60000
+	)
+	chunkSize := maxParams / columnCount
+	if chunkSize <= 0 {
+		chunkSize = 1
+	}
+
+	for start := 0; start < len(rows); start += chunkSize {
+		end := start + chunkSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+		if err := bulkInsertLogRowsChunk(tx, logTable, rows[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func bulkInsertLogRowsChunk(tx *sql.Tx, logTable string, rows []logInsertRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	var query strings.Builder
+	query.Grow(200 + len(rows)*32)
+	query.WriteString(`INSERT INTO "`)
+	query.WriteString(logTable)
+	query.WriteString(`" (
+        ip_id, pageview_flag, timestamp, method, url_id,
+        status_code, bytes_sent, referer_id, ua_id, location_id
+    ) VALUES `)
+
+	args := make([]interface{}, 0, len(rows)*10)
+	for i, row := range rows {
+		if i > 0 {
+			query.WriteString(",")
+		}
+		query.WriteString("(?,?,?,?,?,?,?,?,?,?)")
+		args = append(
+			args,
+			row.ipID,
+			row.pageviewFlag,
+			row.timestamp,
+			row.method,
+			row.urlID,
+			row.statusCode,
+			row.bytesSent,
+			row.refererID,
+			row.uaID,
+			row.locationID,
+		)
+	}
+
+	_, err := tx.Exec(sqlutil.ReplacePlaceholders(query.String()), args...)
+	return err
 }
 
 func getOrCreateDimID(
